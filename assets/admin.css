@@ -1,0 +1,145 @@
+/* Homestay Admin Styles */
+.homestay-gallery-wrapper {
+    padding: 15px;
+}
+
+.homestay-gallery-images {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 100px));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.gallery-image-item {
+    position: relative;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: move;
+    width: 100px;
+    height: 100px;
+}
+
+.gallery-image-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.gallery-image-item .remove-gallery-image {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.gallery-image-item:hover .remove-gallery-image {
+    opacity: 1;
+}
+
+.gallery-image-item .remove-gallery-image:hover {
+    background: #c82333;
+}
+
+.gallery-image-item:first-child {
+    border-color: #3b82f6;
+}
+
+.gallery-image-item:first-child::after {
+    content: 'HERO';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(59, 130, 246, 0.9);
+    color: white;
+    text-align: center;
+    padding: 2px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+/* ── Property Amenities Grid ───────────────────────────── */
+.hhb-amenities-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding: 16px;
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+}
+
+.hhb-amenity-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hhb-amenity-item:hover {
+    background: #f0f6ff;
+    border-color: #b3d4fc;
+}
+
+.hhb-amenity-item input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.hhb-amenity-item input[type="checkbox"]:checked ~ .hhb-amenity-label {
+    font-weight: 600;
+    color: #1d4ed8;
+}
+
+.hhb-amenity-item input[type="checkbox"]:checked ~ .hhb-amenity-icon svg {
+    fill: #1d4ed8;
+}
+
+.hhb-amenity-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    fill: #555;
+}
+
+.hhb-amenity-icon svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+}
+
+.hhb-amenity-icon .dashicons {
+    font-size: 15px;
+    width: 15px;
+    height: 15px;
+    line-height: 15px;
+}
+
+.hhb-amenity-label {
+    font-size: 13px;
+    color: #333;
+    white-space: nowrap;
+}
