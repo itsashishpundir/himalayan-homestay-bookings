@@ -32,6 +32,26 @@ class PostTypes {
             'show_in_rest'          => true,
         );
         register_post_type( 'hhb_homestay', $args );
+
+        // Register Host Applications CPT
+        $host_labels = array(
+            'name'                  => _x( 'Host Applications', 'Post Type General Name', 'himalayan-homestay-bookings' ),
+            'singular_name'         => _x( 'Host Application', 'Post Type Singular Name', 'himalayan-homestay-bookings' ),
+            'menu_name'             => __( 'Host Apps', 'himalayan-homestay-bookings' ),
+            'all_items'             => __( 'Host Applications', 'himalayan-homestay-bookings' ),
+        );
+        $host_args = array(
+            'label'                 => __( 'Host Application', 'himalayan-homestay-bookings' ),
+            'labels'                => $host_labels,
+            'supports'              => false, // Hide editor and title completely
+            'public'                => false,
+            'show_ui'               => false, // Hide default WP post list UI
+            'show_in_menu'          => false,
+            'has_archive'           => false,
+            'show_in_rest'          => false,
+            'capability_type'       => 'post',
+        );
+        register_post_type( 'hhb_host_app', $host_args );
     }
 }
 

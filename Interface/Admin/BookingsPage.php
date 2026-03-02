@@ -48,14 +48,15 @@ class Bookings_List_Table extends \WP_List_Table {
 
     public function get_columns(): array {
         return [
-            'cb'         => '<input type="checkbox" />',
-            'id'         => __( 'ID', 'himalayan-homestay-bookings' ),
-            'homestay'   => __( 'Homestay', 'himalayan-homestay-bookings' ),
-            'customer'   => __( 'Customer', 'himalayan-homestay-bookings' ),
-            'dates'      => __( 'Dates', 'himalayan-homestay-bookings' ),
-            'amount'     => __( 'Amount', 'himalayan-homestay-bookings' ),
-            'status'     => __( 'Status', 'himalayan-homestay-bookings' ),
-            'created_at' => __( 'Date Created', 'himalayan-homestay-bookings' ),
+            'cb'           => '<input type="checkbox" />',
+            'id'           => __( 'ID', 'himalayan-homestay-bookings' ),
+            'homestay'     => __( 'Homestay', 'himalayan-homestay-bookings' ),
+            'customer'     => __( 'Customer', 'himalayan-homestay-bookings' ),
+            'dates'        => __( 'Dates', 'himalayan-homestay-bookings' ),
+            'amount'       => __( 'Amount', 'himalayan-homestay-bookings' ),
+            'payment_mode' => __( 'Mode', 'himalayan-homestay-bookings' ),
+            'status'       => __( 'Status', 'himalayan-homestay-bookings' ),
+            'created_at'   => __( 'Date Created', 'himalayan-homestay-bookings' ),
         ];
     }
 
@@ -85,10 +86,14 @@ class Bookings_List_Table extends \WP_List_Table {
         $all_count = (int) $wpdb->get_var( "SELECT COUNT(id) FROM {$table}" );
 
         $statuses = [
-            'pending_inquiry' => __( 'Pending', 'himalayan-homestay-bookings' ),
-            'approved'        => __( 'Approved', 'himalayan-homestay-bookings' ),
-            'confirmed'       => __( 'Confirmed', 'himalayan-homestay-bookings' ),
+            'pending_inquiry' => __( 'Pending Review', 'himalayan-homestay-bookings' ), // Legacy
+            'pending'         => __( 'Awaiting Payment', 'himalayan-homestay-bookings' ),
+            'approved'        => __( 'Payment Pending', 'himalayan-homestay-bookings' ), // Legacy
+            'confirmed'       => __( 'Confirmed – Paid', 'himalayan-homestay-bookings' ),
+            'dropped'         => __( 'Dropped / Expired', 'himalayan-homestay-bookings' ),
             'cancelled'       => __( 'Cancelled', 'himalayan-homestay-bookings' ),
+            'refunded'        => __( 'Refunded', 'himalayan-homestay-bookings' ),
+            'completed'       => __( 'Completed', 'himalayan-homestay-bookings' ),
         ];
 
         $base_url = admin_url( 'edit.php?post_type=hhb_homestay&page=hhb-bookings' );
@@ -130,7 +135,13 @@ class Bookings_List_Table extends \WP_List_Table {
             case 'id':
                 return '<strong>#' . esc_html( $item['id'] ) . '</strong>';
             case 'amount':
-                return '<strong>$' . esc_html( number_format( (float) $item['total_price'], 2 ) ) . '</strong>';
+                return '<strong>₹' . esc_html( number_format( (float) $item['total_price'], 2 ) ) . '</strong>';
+            case 'payment_mode':
+                $mode = empty($item['gateway']) ? '—' : $item['gateway'];
+                // Backwards compatibility naming
+                if ($mode === 'cash') $mode = 'Cash';
+                if ($mode === 'gateway') $mode = 'Razorpay';
+                return '<strong>' . esc_html( $mode ) . '</strong>';
             case 'status':
                 return $this->render_status_badge( $item['status'] );
             case 'created_at':
@@ -164,26 +175,29 @@ class Bookings_List_Table extends \WP_List_Table {
                 esc_url( add_query_arg( [ 'action' => 'view', 'booking' => $item['id'] ], admin_url( 'edit.php?post_type=hhb_homestay&page=hhb-bookings' ) ) ),
                 __( 'View', 'himalayan-homestay-bookings' )
             ),
-            'delete' => sprintf(
-                '<a href="%s" class="submitdelete" onclick="return confirm(\'%s\')">%s</a>',
-                esc_url( $delete_url ),
-                esc_js( __( 'Are you sure you want to permanently delete this booking?', 'himalayan-homestay-bookings' ) ),
-                __( 'Delete', 'himalayan-homestay-bookings' )
-            ),
         ];
 
-        if ( 'pending_inquiry' === $item['status'] ) {
-            $approve_url        = wp_nonce_url(
-                add_query_arg( [ 'action' => 'approve', 'booking' => $item['id'] ], admin_url( 'edit.php?post_type=hhb_homestay&page=hhb-bookings' ) ),
-                'hhb_approve_booking_' . $item['id']
+        if ( in_array( $item['status'], ['pending', 'approved'] ) ) {
+            $confirm_url = wp_nonce_url(
+                add_query_arg( [ 'action' => 'confirm', 'booking' => $item['id'] ], admin_url( 'edit.php?post_type=hhb_homestay&page=hhb-bookings' ) ),
+                'hhb_confirm_booking_' . $item['id']
             );
-            $actions['approve'] = sprintf(
-                '<a href="%s" style="color: #2e7d32; font-weight: 600;">%s</a>',
-                esc_url( $approve_url ),
-                __( 'Approve', 'himalayan-homestay-bookings' )
+            $actions['confirm'] = sprintf(
+                '<a href="%s" style="color:#0071a1" onclick="return confirm(\'%s\')">%s</a>',
+                esc_url( $confirm_url ),
+                esc_js( __( 'Are you sure you want to mark this booking as confirmed and paid? This will send a final receipt to the customer.', 'himalayan-homestay-bookings' ) ),
+                __( 'Mark as Paid', 'himalayan-homestay-bookings' )
             );
         }
 
+        $actions['delete'] = sprintf(
+            '<a href="%s" class="submitdelete" onclick="return confirm(\'%s\')">%s</a>',
+            esc_url( $delete_url ),
+            esc_js( __( 'Are you sure you want to permanently delete this booking?', 'himalayan-homestay-bookings' ) ),
+            __( 'Delete', 'himalayan-homestay-bookings' )
+        );
+
+        // The 'Approve' action is intentionally removed since bookings flow directly to payment now.
         $edit_link = $homestay ? get_edit_post_link( $item['homestay_id'] ) : '';
         $title_html = $edit_link
             ? sprintf( '<a href="%s">%s</a>', esc_url( $edit_link ), esc_html( $title ) )
@@ -231,8 +245,30 @@ class Bookings_List_Table extends \WP_List_Table {
     // Helper: Status Badge
     // -------------------------------------------------------------------------
 
+    /**
+     * Maps raw DB status keys to human-readable display labels.
+     */
+    public static function get_status_label( string $status ): string {
+        $map = [
+            'pending_inquiry' => 'Pending Review',
+            'pending'         => 'Awaiting Payment',
+            'approved'        => 'Payment Pending',
+            'payment_pending' => 'Payment Pending',
+            'confirmed'       => 'Confirmed – Paid',
+            'dropped'         => 'Dropped (Unpaid)',
+            'payment_expired' => 'Payment Expired',
+            'cancelled'       => 'Cancelled',
+            'refunded'        => 'Refunded',
+            'checked_in'      => 'Checked In',
+            'completed'       => 'Completed',
+            'blocked'         => 'Blocked',
+            'ical_sync'       => 'iCal Sync',
+        ];
+        return $map[ $status ] ?? ucwords( str_replace( '_', ' ', $status ) );
+    }
+
     private function render_status_badge( string $status ): string {
-        $label = ucwords( str_replace( '_', ' ', $status ) );
+        $label = BookingsPage::get_status_label( $status );
         return sprintf(
             '<span class="hhb-status status-%s">%s</span>',
             esc_attr( sanitize_html_class( $status ) ),
@@ -244,44 +280,8 @@ class Bookings_List_Table extends \WP_List_Table {
     // Action Processing
     // -------------------------------------------------------------------------
 
-    public function process_bulk_action(): void {
-        global $wpdb;
-        $table    = $wpdb->prefix . 'himalayan_bookings';
-        $redirect = admin_url( 'edit.php?post_type=hhb_homestay&page=hhb-bookings' );
-
-        // Single delete (with nonce).
-        if ( 'delete' === $this->current_action() && isset( $_REQUEST['booking'] ) ) {
-            $id = intval( $_REQUEST['booking'] );
-            if ( ! wp_verify_nonce( $_REQUEST['_wpnonce'] ?? '', 'hhb_delete_booking_' . $id ) ) {
-                wp_die( __( 'Security check failed.', 'himalayan-homestay-bookings' ) );
-            }
-            $wpdb->delete( $table, [ 'id' => $id ], [ '%d' ] );
-            wp_redirect( add_query_arg( 'deleted', 1, $redirect ) );
-            exit;
-        }
-
-        // Single approve (with nonce).
-        if ( 'approve' === $this->current_action() && isset( $_REQUEST['booking'] ) ) {
-            $id = intval( $_REQUEST['booking'] );
-            if ( ! wp_verify_nonce( $_REQUEST['_wpnonce'] ?? '', 'hhb_approve_booking_' . $id ) ) {
-                wp_die( __( 'Security check failed.', 'himalayan-homestay-bookings' ) );
-            }
-            $wpdb->update( $table, [ 'status' => 'approved' ], [ 'id' => $id ], [ '%s' ], [ '%d' ] );
-            wp_redirect( add_query_arg( 'approved', 1, $redirect ) );
-            exit;
-        }
-
-        // Bulk delete.
-        if ( 'bulk_delete' === $this->current_action() && ! empty( $_REQUEST['booking'] ) ) {
-            check_admin_referer( 'bulk-bookings' );
-            $ids = array_map( 'intval', (array) $_REQUEST['booking'] );
-            foreach ( $ids as $id ) {
-                $wpdb->delete( $table, [ 'id' => $id ], [ '%d' ] );
-            }
-            wp_redirect( add_query_arg( 'deleted', count( $ids ), $redirect ) );
-            exit;
-        }
-    }
+    // (Moved to BookingsPage::process_actions)
+    public function process_bulk_action(): void {}
 
     // -------------------------------------------------------------------------
     // Data Preparation
@@ -348,6 +348,25 @@ class BookingsPage {
     public static function init(): void {
         add_action( 'admin_menu', [ __CLASS__, 'add_menu_page' ] );
         add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_styles' ] );
+        add_action( 'admin_init', [ __CLASS__, 'process_actions' ] );
+    }
+
+    /**
+     * Maps raw DB status keys to human-readable display labels.
+     */
+    public static function get_status_label( string $status ): string {
+        $labels = [
+            'pending_inquiry' => __( 'Pending Review', 'himalayan-homestay-bookings' ),
+            'approved'        => __( 'Payment Pending', 'himalayan-homestay-bookings' ),
+            'confirmed'       => __( 'Confirmed – Paid', 'himalayan-homestay-bookings' ),
+            'payment_expired' => __( 'Payment Expired', 'himalayan-homestay-bookings' ),
+            'cancelled'       => __( 'Cancelled', 'himalayan-homestay-bookings' ),
+            'refunded'        => __( 'Refunded', 'himalayan-homestay-bookings' ),
+            'checked_in'      => __( 'Checked In', 'himalayan-homestay-bookings' ),
+            'completed'       => __( 'Completed', 'himalayan-homestay-bookings' ),
+        ];
+
+        return $labels[ $status ] ?? ucfirst( str_replace( '_', ' ', $status ) );
     }
 
     public static function add_menu_page(): void {
@@ -379,9 +398,29 @@ class BookingsPage {
                 line-height: 1.6;
             }
             .status-pending_inquiry { background: #fff8e1; color: #e65100; border: 1px solid #ffcc80; }
-            .status-approved        { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
-            .status-confirmed       { background: #e3f2fd; color: #0d47a1; border: 1px solid #90caf9; }
-            .status-cancelled       { background: #ffebee; color: #b71c1c; border: 1px solid #ef9a9a; }
+            .status-pending         { background: #fff8e1; color: #f57c00; border: 1px solid #ffb74d; }
+            .status-approved,
+            .status-payment_pending { background: #e3f2fd; color: #0d47a1; border: 1px solid #90caf9; }
+            .status-confirmed       { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+            .status-dropped,
+            .status-payment_expired { background: #ffebee; color: #b71c1c; border: 1px solid #ef9a9a; }
+            .status-cancelled       { background: #f5f5f5; color: #424242; border: 1px solid #bdbdbd; }
+            .status-refunded        { background: #f3e5f5; color: #6a1b9a; border: 1px solid #ce93d8; }
+            .status-checked_in      { background: #e0f2f1; color: #004d40; border: 1px solid #80cbc4; }
+            .status-completed       { background: #263238; color: #eceff1; border: 1px solid #546e7a; }
+            .status-blocked         { background: #eceff1; color: #455a64; border: 1px solid #90a4ae; }
+
+            /* ---- Expiry Notice ---- */
+            .hhb-expiry-notice {
+                display: inline-block;
+                margin-top: 6px;
+                padding: 4px 10px;
+                background: #fff3e0;
+                border: 1px solid #ffb74d;
+                border-radius: 4px;
+                font-size: 12px;
+                color: #e65100;
+            }
 
             /* ---- Detail View ---- */
             .hhb-detail-grid {
@@ -418,6 +457,186 @@ class BookingsPage {
             .hhb-notice-success { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
         ';
         wp_add_inline_style( 'wp-admin', $css );
+    }
+
+    // -------------------------------------------------------------------------
+    // Action Processing (Hooked to admin_init)
+    // -------------------------------------------------------------------------
+
+    public static function process_actions(): void {
+        // Only run on our specific admin page.
+        if ( ! isset( $_GET['page'] ) || 'hhb-bookings' !== $_GET['page'] ) {
+            return;
+        }
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return; // Permissions handled in render_page.
+        }
+
+        $action = isset( $_REQUEST['action'] ) ? sanitize_key( $_REQUEST['action'] ) : '';
+        $action2 = isset( $_REQUEST['action2'] ) ? sanitize_key( $_REQUEST['action2'] ) : '';
+        
+        // WP_List_Table uses action2 for bottom bulk actions
+        $current_action = ( $action && '-1' !== $action ) ? $action : ( ( $action2 && '-1' !== $action2 ) ? $action2 : '' );
+
+        if ( ! $current_action ) {
+            return;
+        }
+
+        global $wpdb;
+        $table    = $wpdb->prefix . 'himalayan_bookings';
+        $redirect = admin_url( 'edit.php?post_type=hhb_homestay&page=hhb-bookings' );
+
+        // Single delete (with nonce).
+        if ( 'delete' === $current_action && isset( $_REQUEST['booking'] ) ) {
+            $id = intval( $_REQUEST['booking'] );
+            if ( ! wp_verify_nonce( $_REQUEST['_wpnonce'] ?? '', 'hhb_delete_booking_' . $id ) ) {
+                wp_die( __( 'Security check failed.', 'himalayan-homestay-bookings' ) );
+            }
+            $wpdb->delete( $table, [ 'id' => $id ], [ '%d' ] );
+            wp_redirect( add_query_arg( 'deleted', 1, $redirect ) );
+            exit;
+        }
+
+        // Single approve (with nonce).
+        if ( 'approve' === $current_action && isset( $_REQUEST['booking'] ) ) {
+            $id = intval( $_REQUEST['booking'] );
+            if ( ! wp_verify_nonce( $_REQUEST['_wpnonce'] ?? '', 'hhb_approve_booking_' . $id ) ) {
+                wp_die( __( 'Security check failed.', 'himalayan-homestay-bookings' ) );
+            }
+
+            try {
+                // Set payment expiry (configurable window, default 60 minutes, in UTC).
+                $opts         = get_option( \Himalayan\Homestay\Interface\Admin\SettingsPage::OPTION_KEY, [] );
+                $expiry_mins  = max( 1, intval( $opts['payment_expiry_minutes'] ?? 60 ) );
+                $expires_at   = gmdate( 'Y-m-d H:i:s', time() + $expiry_mins * MINUTE_IN_SECONDS );
+
+                $manager = new \Himalayan\Homestay\Domain\Booking\BookingManager();
+                $manager->transition_status( $id, \Himalayan\Homestay\Domain\Booking\BookingStatus::APPROVED, 'admin', [
+                    'payment_expires_at' => $expires_at,
+                ] );
+            } catch ( \Exception $e ) {
+                error_log( 'HHB Admin Approve Error: ' . $e->getMessage() );
+            }
+
+            wp_redirect( add_query_arg( 'approved', 1, $redirect ) );
+            exit;
+        }
+
+        // Single confirm (with nonce).
+        if ( 'confirm' === $current_action && isset( $_REQUEST['booking'] ) ) {
+            $id = intval( $_REQUEST['booking'] );
+            if ( ! wp_verify_nonce( $_REQUEST['_wpnonce'] ?? '', 'hhb_confirm_booking_' . $id ) ) {
+                wp_die( __( 'Security check failed.', 'himalayan-homestay-bookings' ) );
+            }
+
+            try {
+                $manager = new \Himalayan\Homestay\Domain\Booking\BookingManager();
+                $manager->transition_status( $id, \Himalayan\Homestay\Domain\Booking\BookingStatus::CONFIRMED, 'admin' );
+            } catch ( \Exception $e ) {
+                error_log( 'HHB Admin Confirm Error: ' . $e->getMessage() );
+            }
+
+            wp_redirect( add_query_arg( 'confirmed', 1, $redirect ) );
+            exit;
+        }
+
+        // Cancel & Refund (with nonce + re-validation guards).
+        if ( 'cancel_refund' === $current_action && isset( $_REQUEST['booking'] ) ) {
+            $id = intval( $_REQUEST['booking'] );
+            if ( ! wp_verify_nonce( $_REQUEST['_wpnonce'] ?? '', 'hhb_cancel_refund_booking_' . $id ) ) {
+                wp_die( __( 'Security check failed.', 'himalayan-homestay-bookings' ) );
+            }
+
+            try {
+                // ── Re-validate inside handler (do NOT trust page-render state) ──
+                $booking_obj = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ) );
+
+                if ( ! $booking_obj ) {
+                    wp_die( __( 'Booking not found.', 'himalayan-homestay-bookings' ) );
+                }
+                if ( $booking_obj->status !== 'confirmed' ) {
+                    wp_die( __( 'Only confirmed bookings can be cancelled and refunded.', 'himalayan-homestay-bookings' ) );
+                }
+                if ( $booking_obj->status === 'refunded' ) {
+                    wp_die( __( 'This booking has already been refunded.', 'himalayan-homestay-bookings' ) );
+                }
+                if ( time() >= strtotime( $booking_obj->check_in ) ) {
+                    wp_die( __( 'Cannot cancel a booking after the check-in date has passed. Please handle this via the Razorpay dashboard.', 'himalayan-homestay-bookings' ) );
+                }
+
+                $refund_id     = '';
+                $refund_amount = 0;
+
+                // ── Calculate refund percentage from Cancellation Policy ──
+                $opts   = get_option( \Himalayan\Homestay\Interface\Admin\SettingsPage::OPTION_KEY, [] );
+                $policy = $opts['cancellation_policy'] ?? 'flexible';
+                $hours_until_checkin = ( strtotime( $booking_obj->check_in ) - time() ) / 3600;
+                $refund_pct = 0;
+
+                switch ( $policy ) {
+                    case 'flexible':
+                        $min_hours = intval( $opts['cancellation_flexible_hours'] ?? 24 );
+                        $refund_pct = ( $hours_until_checkin >= $min_hours ) ? 100 : 0;
+                        break;
+                    case 'moderate':
+                        $min_days = intval( $opts['cancellation_moderate_days'] ?? 3 );
+                        $refund_pct = ( $hours_until_checkin >= ( $min_days * 24 ) ) ? 50 : 0;
+                        break;
+                    case 'strict':
+                        $refund_pct = 0;
+                        break;
+                    case 'custom':
+                        $refund_pct = max( 0, min( 100, intval( $opts['cancellation_custom_pct'] ?? 100 ) ) );
+                        break;
+                }
+
+                error_log( sprintf(
+                    'HHB Cancellation: Booking #%d | Policy: %s | Hours until check-in: %.1f | Refund: %d%%',
+                    $id, $policy, $hours_until_checkin, $refund_pct
+                ) );
+
+                // ── Attempt Razorpay Refund (if gateway payment + refund > 0%) ──
+                if ( ! empty( $booking_obj->transaction_id ) && $booking_obj->gateway !== 'cash' && $refund_pct > 0 ) {
+                    $refund_paise = (int) round( (float) $booking_obj->total_price * 100 * ( $refund_pct / 100 ) );
+
+                    $gateway = new \Himalayan\Homestay\Infrastructure\Payments\RazorpayGateway();
+                    $result  = $gateway->refund( $booking_obj->transaction_id, $refund_paise );
+
+                    if ( ! empty( $result['error'] ) ) {
+                        error_log( sprintf( 'HHB Cancel Failed: Refund API error for Booking #%d: %s', $id, $result['error'] ) );
+                        wp_redirect( add_query_arg( 'refund_failed', 1, $redirect ) );
+                        exit;
+                    }
+
+                    $refund_id     = $result['id'] ?? '';
+                    $refund_amount = $result['amount'] ?? 0;
+                }
+
+                // ── Transition through State Machine ──
+                $manager = new \Himalayan\Homestay\Domain\Booking\BookingManager();
+                $manager->refund_booking( $id, $refund_id, (float) $refund_amount );
+
+            } catch ( \Exception $e ) {
+                error_log( sprintf( 'HHB Cancel/Refund Exception for Booking #%d: %s', $id, $e->getMessage() ) );
+                wp_redirect( add_query_arg( 'refund_failed', 1, $redirect ) );
+                exit;
+            }
+
+            wp_redirect( add_query_arg( 'cancelled', 1, $redirect ) );
+            exit;
+        }
+
+        // Bulk delete.
+        if ( 'bulk_delete' === $current_action && ! empty( $_REQUEST['booking'] ) ) {
+            check_admin_referer( 'bulk-bookings' );
+            $ids = array_map( 'intval', (array) $_REQUEST['booking'] );
+            foreach ( $ids as $id ) {
+                $wpdb->delete( $table, [ 'id' => $id ], [ '%d' ] );
+            }
+            wp_redirect( add_query_arg( 'deleted', count( $ids ), $redirect ) );
+            exit;
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -475,6 +694,12 @@ class BookingsPage {
             <?php if ( ! empty( $_GET['approved'] ) ) : ?>
                 <div class="notice notice-success is-dismissible">
                     <p><?php esc_html_e( 'Booking approved successfully.', 'himalayan-homestay-bookings' ); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <?php if ( ! empty( $_GET['confirmed'] ) ) : ?>
+                <div class="notice notice-success is-dismissible">
+                    <p><?php esc_html_e( 'Booking marked as Confirmed and Paid. Receipt email dispatched to the customer.', 'himalayan-homestay-bookings' ); ?></p>
                 </div>
             <?php endif; ?>
 
@@ -541,12 +766,42 @@ class BookingsPage {
                 </a>
             <?php endif; ?>
 
+            <?php if ( in_array( $booking['status'], ['pending', 'approved'] ) ) : ?>
+                <?php
+                $confirm_url = wp_nonce_url(
+                    add_query_arg( [ 'action' => 'confirm', 'booking' => $booking_id ], $back_url ),
+                    'hhb_confirm_booking_' . $booking_id
+                );
+                ?>
+                <a href="<?php echo esc_url( $confirm_url ); ?>" class="button button-primary" onclick="return confirm('<?php echo esc_js( __( 'Are you sure you want to mark this booking as confirmed and paid? This will send a final receipt to the customer.', 'himalayan-homestay-bookings' ) ); ?>')">
+                    💰 <?php esc_html_e( 'Mark as Confirmed (Paid)', 'himalayan-homestay-bookings' ); ?>
+                </a>
+            <?php endif; ?>
+
+            <a href="<?php echo esc_url( add_query_arg( 'hhb_download_invoice', $booking_id, home_url( '/' ) ) ); ?>" class="button" style="margin-left:8px;" target="_blank">
+                📄 <?php esc_html_e( 'Download Invoice', 'himalayan-homestay-bookings' ); ?>
+            </a>
+
             <a href="<?php echo esc_url( $delete_url ); ?>"
                class="button button-link-delete"
                style="margin-left:8px"
                onclick="return confirm('<?php echo esc_js( __( 'Permanently delete this booking? This cannot be undone.', 'himalayan-homestay-bookings' ) ); ?>')">
                 <?php esc_html_e( 'Delete Booking', 'himalayan-homestay-bookings' ); ?>
             </a>
+
+            <?php if ( 'confirmed' === $booking['status'] && time() < strtotime( $booking['check_in'] ) ) : ?>
+                <?php
+                $cancel_refund_url = wp_nonce_url(
+                    add_query_arg( [ 'action' => 'cancel_refund', 'booking' => $booking_id ], $back_url ),
+                    'hhb_cancel_refund_booking_' . $booking_id
+                );
+                ?>
+                <a href="<?php echo esc_url( $cancel_refund_url ); ?>"
+                   class="button" style="margin-left:8px;background:#d32f2f;color:#fff;border-color:#b71c1c;"
+                   onclick="return confirm('<?php echo esc_js( __( 'Are you sure you want to cancel this booking and issue a full refund? This action cannot be undone.', 'himalayan-homestay-bookings' ) ); ?>')">
+                    ❌ <?php esc_html_e( 'Cancel & Refund', 'himalayan-homestay-bookings' ); ?>
+                </a>
+            <?php endif; ?>
 
             <hr class="wp-header-end">
 
@@ -614,19 +869,35 @@ class BookingsPage {
                     <div class="hhb-detail-row">
                         <span class="label"><?php esc_html_e( 'Total Amount', 'himalayan-homestay-bookings' ); ?></span>
                         <span class="value" style="font-size:16px">
-                            $<?php echo esc_html( number_format( (float) $booking['total_price'], 2 ) ); ?>
+                            ₹<?php echo esc_html( number_format( (float) $booking['total_price'], 2 ) ); ?>
                         </span>
                     </div>
                     <div class="hhb-detail-row">
                         <span class="label"><?php esc_html_e( 'Status', 'himalayan-homestay-bookings' ); ?></span>
                         <span class="value">
                             <?php
-                            $label = ucwords( str_replace( '_', ' ', $booking['status'] ) );
                             echo sprintf(
                                 '<span class="hhb-status status-%s">%s</span>',
                                 esc_attr( sanitize_html_class( $booking['status'] ) ),
-                                esc_html( $label )
+                                esc_html( BookingsPage::get_status_label( $booking['status'] ) )
                             );
+                            // Show payment expiry countdown for approved bookings.
+                            if ( 'approved' === $booking['status'] && ! empty( $booking['payment_expires_at'] ) ) {
+                                $expires_ts = strtotime( $booking['payment_expires_at'] );
+                                $mins_left  = max( 0, (int) ceil( ( $expires_ts - time() ) / 60 ) );
+                                echo '<br><span class="hhb-expiry-notice">⏱ Payment link expires in ' . esc_html( $mins_left ) . ' min</span>';
+                            }
+                            ?>
+                        </span>
+                    </div>
+                    <div class="hhb-detail-row">
+                        <span class="label"><?php esc_html_e( 'Mode', 'himalayan-homestay-bookings' ); ?></span>
+                        <span class="value">
+                            <?php 
+                            $mode = empty($booking['gateway']) ? '—' : $booking['gateway'];
+                            if ($mode === 'cash') $mode = 'Cash';
+                            if ($mode === 'gateway') $mode = 'Gateway';
+                            echo esc_html( $mode ); 
                             ?>
                         </span>
                     </div>
@@ -637,6 +908,43 @@ class BookingsPage {
                 </div>
 
             </div><!-- .hhb-detail-grid -->
+
+            <?php
+            // ── Fetch and display Audit Log ──
+            $audit_logs = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}himalayan_audit_log WHERE booking_id = %d ORDER BY created_at DESC",
+                $id
+            ) );
+            if ( ! empty( $audit_logs ) ) :
+            ?>
+            <div class="hhb-detail-card" style="margin-top:20px;">
+                <h3><?php esc_html_e( 'Audit Trail (Status History)', 'himalayan-homestay-bookings' ); ?></h3>
+                <table class="wp-list-table widefat fixed striped" style="margin-top:10px;">
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Transition</th>
+                            <th>Actor</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $audit_logs as $log ) : ?>
+                            <tr>
+                                <td><?php echo esc_html( $log->created_at ); ?></td>
+                                <td>
+                                    <span class="hhb-status status-<?php echo esc_attr( $log->old_status ); ?>" style="font-size:10px; padding:2px 6px;"><?php echo esc_html( str_replace('_', ' ', $log->old_status) ); ?></span>
+                                    <span style="color:#999;">&rarr;</span>
+                                    <span class="hhb-status status-<?php echo esc_attr( $log->new_status ); ?>" style="font-size:10px; padding:2px 6px;"><?php echo esc_html( str_replace('_', ' ', $log->new_status) ); ?></span>
+                                </td>
+                                <td><code><?php echo esc_html( $log->actor ); ?></code></td>
+                                <td><?php echo esc_html( $log->note ); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
 
             <?php if ( ! empty( $booking['notes'] ) ) : ?>
             <div class="hhb-detail-card" style="margin-top:0">

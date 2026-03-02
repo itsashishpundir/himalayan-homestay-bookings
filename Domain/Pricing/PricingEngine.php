@@ -22,10 +22,10 @@ class PricingEngine {
      * @param string $check_in     Check-in date (Y-m-d).
      * @param string $check_out    Check-out date (Y-m-d).
      * @param int    $guests       Number of guests.
-     * @param array  $service_ids  Optional array of extra service IDs selected by guest.
+     * @param string $coupon_code  Optional coupon code.
      * @return array Detailed price breakdown.
      */
-    public function calculate_detailed_price( int $homestay_id, string $check_in, string $check_out, int $guests = 1, array $service_ids = [] ): array {
+    public function calculate_detailed_price( int $homestay_id, string $check_in, string $check_out, int $guests = 1, array $service_ids = [], string $coupon_code = '' ): array {
         $base_price  = (float) get_post_meta( $homestay_id, 'base_price_per_night', true );
         $offer_price = (float) get_post_meta( $homestay_id, 'offer_price_per_night', true );
         $max_guests  = (int) get_post_meta( $homestay_id, 'max_guests', true ) ?: 2;
@@ -156,10 +156,58 @@ class PricingEngine {
         }
 
         // -------------------------------------------------------------------
+        // Coupon discount.
+        // -------------------------------------------------------------------
+        $grand_total   = round( $nightly_total + $extra_guest_charge + $services_total, 2 );
+        $coupon_amount = 0;
+        $coupon_detail = null;
+
+        if ( ! empty( $coupon_code ) ) {
+            $coupon_table = $wpdb->prefix . 'himalayan_coupons';
+            $coupon       = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$coupon_table} WHERE code = %s AND is_active = 1",
+                strtoupper( $coupon_code )
+            ) );
+
+            if ( $coupon ) {
+                $is_valid = true;
+                $today    = current_time( 'Y-m-d H:i:s' );
+
+                if ( $coupon->max_uses > 0 && $coupon->used_count >= $coupon->max_uses ) {
+                    $is_valid = false;
+                }
+                if ( $coupon->valid_from && $today < $coupon->valid_from ) {
+                    $is_valid = false;
+                }
+                if ( $coupon->valid_to && $today > $coupon->valid_to ) {
+                    $is_valid = false;
+                }
+
+                if ( $is_valid ) {
+                    if ( 'percent' === $coupon->discount_type ) {
+                        $coupon_amount = round( $grand_total * ( (float) $coupon->discount_value / 100 ), 2 );
+                    } else {
+                        $coupon_amount = (float) $coupon->discount_value;
+                    }
+                    
+                    // Prevent negative total
+                    $coupon_amount = min( $coupon_amount, $grand_total );
+                    $grand_total  -= $coupon_amount;
+
+                    $coupon_detail = [
+                        'code'   => $coupon->code,
+                        'amount' => $coupon_amount,
+                        'type'   => $coupon->discount_type,
+                        'value'  => $coupon->discount_value,
+                    ];
+                }
+            }
+        }
+
+        // -------------------------------------------------------------------
         // Deposit calculation.
         // -------------------------------------------------------------------
         $deposit_percent = (float) get_post_meta( $homestay_id, 'hhb_deposit_percent', true );
-        $grand_total     = round( $nightly_total + $extra_guest_charge + $services_total, 2 );
         $deposit_amount  = ( $deposit_percent > 0 ) ? round( $grand_total * ( $deposit_percent / 100 ), 2 ) : $grand_total;
         $balance_due     = round( $grand_total - $deposit_amount, 2 );
 
@@ -170,6 +218,8 @@ class PricingEngine {
             'extra_guest_charge' => round( $extra_guest_charge, 2 ),
             'services_total'     => round( $services_total, 2 ),
             'services_detail'    => $services_detail,
+            'coupon_amount'      => round( $coupon_amount, 2 ),
+            'coupon_detail'      => $coupon_detail,
             'grand_total'        => $grand_total,
             'deposit_amount'     => $deposit_amount,
             'deposit_percent'    => $deposit_percent,

@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 class Taxonomies {
     public static function init() {
-        add_action( 'init', array( __CLASS__, 'register_taxonomies' ) );
+        add_action( 'init', array( __CLASS__, 'register_taxonomies' ), 15 );
     }
 
     public static function register_taxonomies() {

@@ -1,0 +1,340 @@
+<?php
+/**
+ * Property Manager
+ *
+ * Handles AJAX requests from the frontend Host Dashboard to create,
+ * update, and manage homestay properties securely.
+ *
+ * @package Himalayan\Homestay\Frontend
+ */
+
+namespace Himalayan\Homestay\Frontend;
+
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+class PropertyManager {
+
+    public static function init() {
+        add_action( 'wp_ajax_hhb_save_property', array( __CLASS__, 'handle_save_property' ) );
+        add_action( 'wp_ajax_hhb_save_host_settings', array( __CLASS__, 'handle_save_settings' ) );
+        add_action( 'wp_ajax_hhb_delete_property', array( __CLASS__, 'handle_delete_property' ) );
+        
+        // Allow hosts to query the media library on the frontend
+        add_filter( 'ajax_query_attachments_args', array( __CLASS__, 'allow_frontend_media_query' ) );
+
+        // WordPress blocks query-attachments if ! current_user_can('upload_files') BEFORE the filter runs.
+        // We must hook into the AJAX action early to ensure our host bypass works.
+        add_action( 'wp_ajax_query-attachments', array( __CLASS__, 'force_allow_media_query_for_hosts' ), 1 );
+    }
+
+    public static function force_allow_media_query_for_hosts() {
+        if ( is_user_logged_in() ) {
+            $user = wp_get_current_user();
+            if ( in_array( 'hhb_host', (array) $user->roles ) || in_array( 'subscriber', (array) $user->roles ) ) {
+                // Temporarily grant upload_files during this specific AJAX request so core WP doesn't wp_die().
+                if ( ! $user->has_cap('upload_files') ) {
+                    $user->add_cap('upload_files');
+                }
+            }
+        }
+    }
+
+    public static function allow_frontend_media_query( $query ) {
+        if ( is_user_logged_in() ) {
+            $user = wp_get_current_user();
+            if ( in_array( 'hhb_host', (array) $user->roles ) || in_array( 'subscriber', (array) $user->roles ) || current_user_can('edit_posts') ) {
+                
+                // Allow them to use the media Library on the frontend dashboard
+                if ( ! current_user_can( 'upload_files' ) ) {
+                    $user->add_cap( 'upload_files' );
+                }
+                
+                // CRITICAL FIX: WordPress frontend media js often injects `author=current_user` 
+                // for non-admins. This forces the grid to only show images they uploaded.
+                // Our dummy content was uploaded by Admin, so the host sees an empty grid.
+                // We unset this so they can select any image in the library.
+                if ( isset( $query['author'] ) ) {
+                    unset( $query['author'] );
+                }
+                
+                return $query;
+            }
+        }
+        return $query;
+    }
+
+    public static function handle_save_settings() {
+        // 1. Security Checks
+        if ( ! isset( $_POST['hhb_settings_nonce'] ) || ! wp_verify_nonce( $_POST['hhb_settings_nonce'], 'hhb_save_settings_nonce' ) ) {
+            wp_send_json_error( __( 'Security check failed.', 'himalayan-homestay-bookings' ) );
+        }
+
+        if ( ! is_user_logged_in() ) {
+            wp_send_json_error( __( 'You must be logged in to update settings.', 'himalayan-homestay-bookings' ) );
+        }
+
+        $user_id = get_current_user_id();
+
+        // 2. Sanitize Data
+        $first_name = sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) );
+        $last_name  = sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) );
+        $email      = sanitize_email( wp_unslash( $_POST['user_email'] ?? '' ) );
+        $bio        = sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) );
+        $avatar_id  = isset( $_POST['hhb_avatar_id'] ) ? intval( $_POST['hhb_avatar_id'] ) : 0;
+
+        if ( empty( $email ) ) {
+            wp_send_json_error( __( 'Email address is required.', 'himalayan-homestay-bookings' ) );
+        }
+
+        // Check if email belongs to another user
+        $email_exists = email_exists( $email );
+        if ( $email_exists && $email_exists !== $user_id ) {
+            wp_send_json_error( __( 'This email address is already in use by another account.', 'himalayan-homestay-bookings' ) );
+        }
+
+        // 3. Update WP_User
+        $userdata = [
+            'ID'          => $user_id,
+            'user_email'  => $email,
+            'first_name'  => $first_name,
+            'last_name'   => $last_name,
+            'description' => $bio,
+            // If they change first/last name, we probably want display_name to update too:
+            'display_name'=> trim( $first_name . ' ' . $last_name ) ?: $email,
+        ];
+        
+        $result = wp_update_user( $userdata );
+        
+        if ( is_wp_error( $result ) ) {
+            wp_send_json_error( $result->get_error_message() );
+        }
+
+        // 4. Update Meta Flags (Avatar)
+        if ( $avatar_id > 0 ) {
+            update_user_meta( $user_id, 'hhb_avatar_id', $avatar_id );
+            
+            // Generate standard WP avatar fallback URL based on attachment
+            $avatar_url = wp_get_attachment_image_url( $avatar_id, 'thumbnail' );
+            if ( $avatar_url ) {
+                 update_user_meta( $user_id, 'custom_avatar', $avatar_url ); // Optional: for legacy themes
+            }
+        } else {
+            delete_user_meta( $user_id, 'hhb_avatar_id' );
+            delete_user_meta( $user_id, 'custom_avatar' );
+        }
+
+        wp_send_json_success( __( 'Profile updated successfully!', 'himalayan-homestay-bookings' ) );
+    }
+
+    public static function handle_delete_property() {
+        if ( ! isset( $_POST['security'] ) || ! wp_verify_nonce( $_POST['security'], 'hhb_delete_property_nonce' ) ) {
+            wp_send_json_error( 'Security check failed.' );
+        }
+        if ( ! is_user_logged_in() ) {
+            wp_send_json_error( 'You must be logged in.' );
+        }
+        
+        $property_id = isset( $_POST['property_id'] ) ? intval( $_POST['property_id'] ) : 0;
+        if ( ! $property_id ) {
+            wp_send_json_error( 'Invalid property.' );
+        }
+
+        $post = get_post( $property_id );
+        if ( ! $post || $post->post_type !== 'hhb_homestay' ) {
+            wp_send_json_error( 'Invalid property.' );
+        }
+
+        if ( (int) $post->post_author !== get_current_user_id() && ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Permission denied.' );
+        }
+
+        $result = wp_trash_post( $property_id );
+        if ( ! $result ) {
+            wp_send_json_error( 'Failed to delete property.' );
+        }
+
+        wp_send_json_success( 'Property deleted successfully.' );
+    }
+
+    public static function handle_save_property() {
+        // 1. Security & Nonce
+        if ( ! isset( $_POST['security'] ) || ! wp_verify_nonce( $_POST['security'], 'hhb_save_property' ) ) {
+            wp_send_json_error( 'Security validation failed.' );
+        }
+
+        // 2. Authentication
+        if ( ! is_user_logged_in() ) {
+            wp_send_json_error( 'You must be logged in to save properties.' );
+        }
+
+        $current_user_id = get_current_user_id();
+
+        // 3. Extract & Sanitize Data
+        $property_id = isset( $_POST['property_id'] ) ? intval( $_POST['property_id'] ) : 0;
+        $title       = sanitize_text_field( wp_unslash( $_POST['post_title'] ?? '' ) );
+        $content     = wp_kses_post( wp_unslash( $_POST['post_content'] ?? '' ) );
+        
+        $base_price  = floatval( trim( $_POST['base_price_per_night'] ?? 0 ) );
+        $offer_price = floatval( trim( $_POST['offer_price_per_night'] ?? 0 ) );
+        $max_guests  = intval( $_POST['max_guests'] ?? 2 );
+        $bedrooms    = intval( $_POST['hhb_bedrooms'] ?? 1 );
+        $bathrooms   = floatval( $_POST['hhb_bathrooms'] ?? 1 );
+
+        // New Location & Rules fields
+        $lat                 = sanitize_text_field( wp_unslash( $_POST['lat'] ?? '' ) );
+        $lng                 = sanitize_text_field( wp_unslash( $_POST['lng'] ?? '' ) );
+        $min_nights          = intval( $_POST['hhb_min_nights'] ?? 1 );
+        $max_nights          = intval( $_POST['hhb_max_nights'] ?? 30 );
+        $buffer_days         = intval( $_POST['hhb_buffer_days'] ?? 0 );
+        $deposit_percent     = intval( $_POST['hhb_deposit_percent'] ?? 0 );
+        $extra_guest_fee     = floatval( trim( $_POST['hhb_extra_guest_fee'] ?? 0 ) );
+        $dos                 = sanitize_textarea_field( wp_unslash( $_POST['hhb_dos'] ?? '' ) );
+        $donts               = sanitize_textarea_field( wp_unslash( $_POST['hhb_donts'] ?? '' ) );
+        
+        $attractions_raw     = sanitize_textarea_field( wp_unslash( $_POST['hhb_attractions'] ?? '' ) );
+        $attractions         = array_filter( array_map( 'trim', explode( "\n", $attractions_raw ) ) );
+
+        // New Host fields
+        $host_mode           = sanitize_text_field( wp_unslash( $_POST['hhb_host_mode'] ?? 'user' ) );
+        $host_user_id        = intval( $_POST['hhb_host_user_id'] ?? 0 );
+        $host_name           = sanitize_text_field( wp_unslash( $_POST['hhb_host_name'] ?? '' ) );
+        $host_email          = sanitize_email( wp_unslash( $_POST['hhb_host_email'] ?? '' ) );
+        $host_phone          = sanitize_text_field( wp_unslash( $_POST['hhb_host_phone'] ?? '' ) );
+        $host_avatar_url     = esc_url_raw( wp_unslash( $_POST['hhb_host_avatar_url'] ?? '' ) );
+        $host_bio            = sanitize_textarea_field( wp_unslash( $_POST['hhb_host_bio'] ?? '' ) );
+
+        if ( empty( $title ) || $base_price <= 0 ) {
+            wp_send_json_error( 'Title and Base Price are required.' );
+        }
+
+        // 4. Verify Ownership if updating
+        if ( $property_id > 0 ) {
+            $post_author = (int) get_post_field( 'post_author', $property_id );
+            if ( $post_author !== $current_user_id && ! current_user_can( 'manage_options' ) ) {
+                wp_send_json_error( 'You do not have permission to edit this property.' );
+            }
+        }
+
+        // 5. Build Post Array
+        $post_data = [
+            'post_title'   => $title,
+            'post_content' => $content,
+            'post_type'    => 'hhb_homestay',
+            'post_status'  => 'publish', // Auto-publish for now
+            'post_author'  => $current_user_id,
+        ];
+
+        if ( $property_id > 0 ) {
+            $post_data['ID'] = $property_id;
+            $new_post_id = wp_update_post( $post_data, true );
+        } else {
+            $new_post_id = wp_insert_post( $post_data, true );
+        }
+
+        if ( is_wp_error( $new_post_id ) ) {
+            wp_send_json_error( $new_post_id->get_error_message() );
+        }
+
+        // 6. Save Meta Data
+        update_post_meta( $new_post_id, 'base_price_per_night', $base_price );
+        if ( $offer_price > 0 ) {
+            update_post_meta( $new_post_id, 'offer_price_per_night', $offer_price );
+        } else {
+            delete_post_meta( $new_post_id, 'offer_price_per_night' );
+        }
+        update_post_meta( $new_post_id, 'max_guests', $max_guests );
+        update_post_meta( $new_post_id, 'hhb_bedrooms', $bedrooms );
+        update_post_meta( $new_post_id, 'hhb_bathrooms', $bathrooms );
+
+        // Save New Location & Rules fields
+        update_post_meta( $new_post_id, 'lat', $lat );
+        update_post_meta( $new_post_id, 'lng', $lng );
+        update_post_meta( $new_post_id, 'hhb_min_nights', $min_nights );
+        update_post_meta( $new_post_id, 'hhb_max_nights', $max_nights );
+        update_post_meta( $new_post_id, 'hhb_buffer_days', $buffer_days );
+        update_post_meta( $new_post_id, 'hhb_deposit_percent', $deposit_percent );
+        update_post_meta( $new_post_id, 'hhb_extra_guest_fee', $extra_guest_fee );
+        update_post_meta( $new_post_id, 'hhb_dos', $dos );
+        update_post_meta( $new_post_id, 'hhb_donts', $donts );
+        update_post_meta( $new_post_id, 'hhb_attractions', $attractions );
+
+        // Save New Host fields
+        update_post_meta( $new_post_id, 'hhb_host_mode', $host_mode );
+        update_post_meta( $new_post_id, 'hhb_host_user_id', $host_user_id );
+        update_post_meta( $new_post_id, 'hhb_host_name', $host_name );
+        update_post_meta( $new_post_id, 'hhb_host_email', $host_email );
+        update_post_meta( $new_post_id, 'hhb_host_phone', $host_phone );
+        update_post_meta( $new_post_id, 'hhb_host_avatar_url', $host_avatar_url );
+        update_post_meta( $new_post_id, 'hhb_host_bio', $host_bio );
+
+        // 6b. Save Media
+        if ( isset( $_POST['cover_image_id'] ) && ! empty( $_POST['cover_image_id'] ) ) {
+            set_post_thumbnail( $new_post_id, intval( $_POST['cover_image_id'] ) );
+        } else {
+            delete_post_thumbnail( $new_post_id );
+        }
+
+        if ( isset( $_POST['gallery_image_ids'] ) ) {
+            $gallery_ids = array_filter( array_map( 'intval', explode( ',', wp_unslash( $_POST['gallery_image_ids'] ) ) ) );
+            // Save as comma-separated string for single-hhb_homestay.php compatibility
+            update_post_meta( $new_post_id, 'hhb_gallery', implode(',', $gallery_ids) );
+            // Keep array version for backwards compatibility just in case
+            update_post_meta( $new_post_id, 'hhb_gallery_images', $gallery_ids );
+        }
+
+        // 6c. Save Amenities & Taxonomy
+        if ( isset( $_POST['hhb_amenities'] ) && is_array( $_POST['hhb_amenities'] ) ) {
+            $amenities = array_map( 'sanitize_text_field', wp_unslash( $_POST['hhb_amenities'] ) );
+            update_post_meta( $new_post_id, 'hhb_amenities', $amenities );
+        } else {
+            delete_post_meta( $new_post_id, 'hhb_amenities' );
+        }
+
+        // Save Taxonomy Amenity Terms
+        if ( isset( $_POST['hhb_amenity_terms'] ) && is_array( $_POST['hhb_amenity_terms'] ) ) {
+            $amenity_terms = array_map( 'intval', wp_unslash( $_POST['hhb_amenity_terms'] ) );
+            wp_set_object_terms( $new_post_id, $amenity_terms, 'hhb_amenity', false );
+        } else {
+            wp_set_object_terms( $new_post_id, [], 'hhb_amenity', false );
+        }
+
+        if ( isset( $_POST['hhb_locations'] ) && is_array( $_POST['hhb_locations'] ) ) {
+            $loc_term_ids = [];
+            foreach ( wp_unslash( $_POST['hhb_locations'] ) as $loc ) {
+                if ( is_numeric( $loc ) ) {
+                    $loc_term_ids[] = intval( $loc ); // Existing term ID
+                } else {
+                    $loc_term_ids[] = sanitize_text_field( $loc ); // New term string
+                }
+            }
+            wp_set_object_terms( $new_post_id, $loc_term_ids, 'hhb_location', false );
+        } else {
+            wp_set_object_terms( $new_post_id, [], 'hhb_location', false );
+        }
+
+        if ( isset( $_POST['hhb_property_types'] ) && is_array( $_POST['hhb_property_types'] ) ) {
+            $prop_types = [];
+            foreach ( wp_unslash( $_POST['hhb_property_types'] ) as $pt ) {
+                if ( is_numeric( $pt ) ) {
+                    $prop_types[] = intval( $pt ); // Existing term ID
+                } else {
+                    $prop_types[] = sanitize_text_field( $pt ); // New term string
+                }
+            }
+            wp_set_object_terms( $new_post_id, $prop_types, 'hhb_property_type', false );
+        } else {
+            wp_set_object_terms( $new_post_id, [], 'hhb_property_type', false );
+        }
+
+        // Provide a default currency if none exists
+        if ( ! get_post_meta( $new_post_id, 'currency', true ) ) {
+            update_post_meta( $new_post_id, 'currency', 'INR' );
+        }
+
+        // 7. Success Response
+        wp_send_json_success( [
+            'property_id' => $new_post_id,
+            'message'     => 'Property saved successfully.'
+        ] );
+    }
+}

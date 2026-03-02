@@ -118,9 +118,15 @@
                 if (dateStr >= b.check_in && dateStr < b.check_out) {
                     // Only render start label on the check-in day (or first day of month)
                     if (dateStr === b.check_in || d === 1) {
-                        const label = (b.homestay_title || 'Homestay') + ' — ' + b.customer_name;
+                        const isBlock = (b.status === 'blocked');
+                        const label = isBlock
+                            ? '🚫 Blocked: ' + escHtml(b.customer_name)
+                            : (b.homestay_title || 'Homestay') + ' — ' + b.customer_name;
                         body += '<div class="hhb-cal-booking status-' + b.status + '" title="' + escHtml(label) + '">';
-                        body += escHtml(label);
+                        body += '<span>' + escHtml(label) + '</span>';
+                        if (isBlock) {
+                            body += '<button class="hhb-del-block" data-id="' + b.id + '" title="Remove block" style="float:right;background:none;border:none;cursor:pointer;color:#c00;font-weight:bold;padding:0 4px;">×</button>';
+                        }
                         body += '</div>';
                     }
                 }
@@ -138,6 +144,15 @@
 
         body += '</div>';
         grid.append(body);
+
+        // Bind delete-block buttons
+        grid.find('.hhb-del-block').on('click', function(e) {
+            e.stopPropagation();
+            const blockId = $(this).data('id');
+            if (confirm('Remove this date block?')) {
+                deleteBlock(blockId);
+            }
+        });
     }
 
     // =========================================================================
@@ -162,6 +177,20 @@
                 loadCalendar();
             } else {
                 alert(res.data || 'Error blocking dates.');
+            }
+        });
+    }
+
+    function deleteBlock(blockId) {
+        $.post(hhbCalendar.ajax_url, {
+            action:   'hhb_delete_block',
+            nonce:    hhbCalendar.nonce,
+            block_id: blockId
+        }, function(res) {
+            if (res.success) {
+                loadCalendar();
+            } else {
+                alert(res.data || 'Could not remove block.');
             }
         });
     }

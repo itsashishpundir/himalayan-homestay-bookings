@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 class Installer {
 
     /** @var string Current database schema version. */
-    const DB_VERSION = '2.0.0';
+    const DB_VERSION = '4.0.0';
 
     public static function install() {
         global $wpdb;
@@ -43,12 +43,20 @@ class Installer {
             adults int(11) DEFAULT 1 NOT NULL,
             children int(11) DEFAULT 0 NOT NULL,
             total_price decimal(10,2) NOT NULL,
+            admin_commission decimal(10,2) DEFAULT 0 NOT NULL,
+            host_payout decimal(10,2) DEFAULT 0 NOT NULL,
             deposit_amount decimal(10,2) DEFAULT 0 NOT NULL,
             balance_due decimal(10,2) DEFAULT 0 NOT NULL,
             status varchar(50) DEFAULT 'pending_inquiry' NOT NULL,
             payment_token varchar(255) DEFAULT '' NOT NULL,
+            payment_expires_at datetime DEFAULT NULL,
             gateway varchar(50) DEFAULT '' NOT NULL,
             transaction_id varchar(255) DEFAULT '' NOT NULL,
+            refund_id varchar(255) DEFAULT '' NOT NULL,
+            refund_amount decimal(10,2) DEFAULT 0 NOT NULL,
+            refund_status varchar(50) DEFAULT '' NOT NULL,
+            refunded_at datetime DEFAULT NULL,
+            invoice_number varchar(20) DEFAULT '' NOT NULL,
             notes text DEFAULT '' NOT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
@@ -56,6 +64,8 @@ class Installer {
             KEY homestay_id (homestay_id),
             KEY dates (check_in, check_out),
             KEY status (status),
+            KEY payment_expires_at (payment_expires_at),
+            KEY idx_availability (homestay_id, status, check_in, check_out, payment_expires_at),
             UNIQUE KEY token (payment_token)
         ) $collate;";
 
@@ -142,7 +152,185 @@ class Installer {
             sent_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             status varchar(20) DEFAULT 'sent' NOT NULL,
             PRIMARY KEY  (id),
+            KEY booking_id (booking_id),
+            UNIQUE KEY idempotent_email (booking_id, email_type)
+        ) $collate;";
+
+        // =====================================================================
+        // 6b. Webhook Events Ledger (NEW for Phase 1 Hardening)
+        // =====================================================================
+        $table_webhook_events = $wpdb->prefix . 'himalayan_webhook_events';
+        $sql6b = "CREATE TABLE $table_webhook_events (
+            event_id varchar(255) NOT NULL,
+            booking_id bigint(20) unsigned DEFAULT 0 NOT NULL,
+            event_type varchar(100) NOT NULL,
+            raw_payload_hash varchar(64) DEFAULT '' NOT NULL,
+            processed_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (event_id),
             KEY booking_id (booking_id)
+        ) $collate;";
+
+        // =====================================================================
+        // 6c. Invoice Sequence Generator (NEW for Phase 1 Hardening)
+        // =====================================================================
+        $table_invoice_seq = $wpdb->prefix . 'himalayan_invoice_sequences';
+        $sql6c = "CREATE TABLE $table_invoice_seq (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            last_invoice_number bigint(20) unsigned DEFAULT 0 NOT NULL,
+            PRIMARY KEY  (id)
+        ) $collate;";
+
+        // =====================================================================
+        // 7. Verified Guest Reviews (NEW for Phase 12)
+        // =====================================================================
+        $table_reviews = $wpdb->prefix . 'hhb_reviews';
+        $sql7 = "CREATE TABLE $table_reviews (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            booking_id bigint(20) unsigned NOT NULL,
+            homestay_id bigint(20) unsigned NOT NULL,
+            customer_name varchar(255) NOT NULL,
+            customer_email varchar(255) NOT NULL,
+            rating int(1) NOT NULL,
+            rating_cleanliness int(1) DEFAULT 0 NOT NULL,
+            rating_communication int(1) DEFAULT 0 NOT NULL,
+            rating_location int(1) DEFAULT 0 NOT NULL,
+            rating_value int(1) DEFAULT 0 NOT NULL,
+            comment text NOT NULL,
+            status varchar(20) DEFAULT 'approved' NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            KEY booking_id (booking_id),
+            KEY homestay_id (homestay_id),
+            UNIQUE KEY unique_booking_review (booking_id)
+        ) $collate;";
+
+        // =====================================================================
+        // 8. External iCal Feeds (NEW for Phase 6)
+        // =====================================================================
+        $table_ical_feeds = $wpdb->prefix . 'hhb_ical_feeds';
+        $sql8 = "CREATE TABLE $table_ical_feeds (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            homestay_id bigint(20) unsigned NOT NULL,
+            source_name varchar(100) NOT NULL,
+            feed_url varchar(1000) NOT NULL,
+            last_synced datetime DEFAULT NULL,
+            is_active tinyint(1) DEFAULT 1 NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            KEY homestay_id (homestay_id)
+        ) $collate;";
+
+        // =====================================================================
+        // 9. Discount Coupons (NEW for Phase 7)
+        // =====================================================================
+        $table_coupons = $wpdb->prefix . 'himalayan_coupons';
+        $sql9 = "CREATE TABLE $table_coupons (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            code varchar(50) NOT NULL,
+            discount_type varchar(20) DEFAULT 'percent' NOT NULL,
+            discount_value decimal(10,2) NOT NULL,
+            max_uses int(11) DEFAULT 0 NOT NULL,
+            used_count int(11) DEFAULT 0 NOT NULL,
+            valid_from datetime DEFAULT NULL,
+            valid_to datetime DEFAULT NULL,
+            is_active tinyint(1) DEFAULT 1 NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            UNIQUE KEY unique_code (code)
+        ) $collate;";
+
+        // =====================================================================
+        // 10. Audit Log (Status Transition History)
+        // =====================================================================
+        $table_audit = $wpdb->prefix . 'himalayan_audit_log';
+        $sql10 = "CREATE TABLE $table_audit (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            booking_id bigint(20) unsigned NOT NULL,
+            old_status varchar(50) NOT NULL,
+            new_status varchar(50) NOT NULL,
+            actor varchar(100) DEFAULT 'system' NOT NULL,
+            note text DEFAULT '' NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            KEY booking_id (booking_id)
+        ) $collate;";
+
+        // =====================================================================
+        // 11. Host Payouts Ledger
+        // =====================================================================
+        $table_payouts = $wpdb->prefix . 'himalayan_payouts';
+        $sql11 = "CREATE TABLE $table_payouts (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            booking_id bigint(20) unsigned NOT NULL,
+            host_id bigint(20) unsigned NOT NULL,
+            homestay_id bigint(20) unsigned NOT NULL,
+            total_amount decimal(10,2) NOT NULL DEFAULT 0,
+            commission_amount decimal(10,2) NOT NULL DEFAULT 0,
+            host_payout_amount decimal(10,2) NOT NULL DEFAULT 0,
+            payout_status varchar(20) DEFAULT 'pending' NOT NULL,
+            paid_at datetime DEFAULT NULL,
+            paid_by bigint(20) unsigned DEFAULT NULL,
+            notes text DEFAULT '' NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            KEY booking_id (booking_id),
+            KEY host_id (host_id),
+            KEY payout_status (payout_status),
+            UNIQUE KEY unique_booking_payout (booking_id)
+        ) $collate;";
+
+        // =====================================================================
+        // 12. Availability Ledger (NEW for Phase 6 Platform Architecture)
+        // =====================================================================
+        $table_ledger = $wpdb->prefix . 'himalayan_availability_ledger';
+        $sql12 = "CREATE TABLE $table_ledger (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            homestay_id bigint(20) unsigned NOT NULL,
+            booking_id bigint(20) unsigned NOT NULL,
+            date date NOT NULL,
+            status varchar(50) NOT NULL,
+            PRIMARY KEY  (id),
+            KEY homestay_date (homestay_id, date),
+            UNIQUE KEY unique_ledger (homestay_id, date, booking_id)
+        ) $collate;";
+
+        // =====================================================================
+        // 13. Bookings Archive Ledger (NEW for Phase 6 Architecture)
+        // =====================================================================
+        $table_archive = $wpdb->prefix . 'himalayan_bookings_archive';
+        $sql13 = "CREATE TABLE $table_archive (
+            id bigint(20) unsigned NOT NULL,
+            homestay_id bigint(20) unsigned NOT NULL,
+            customer_name varchar(255) NOT NULL,
+            customer_email varchar(255) NOT NULL,
+            customer_phone varchar(50) DEFAULT '' NOT NULL,
+            check_in date NOT NULL,
+            check_out date NOT NULL,
+            guests int(11) DEFAULT 1 NOT NULL,
+            adults int(11) DEFAULT 1 NOT NULL,
+            children int(11) DEFAULT 0 NOT NULL,
+            total_price decimal(10,2) NOT NULL,
+            admin_commission decimal(10,2) DEFAULT 0 NOT NULL,
+            host_payout decimal(10,2) DEFAULT 0 NOT NULL,
+            deposit_amount decimal(10,2) DEFAULT 0 NOT NULL,
+            balance_due decimal(10,2) DEFAULT 0 NOT NULL,
+            status varchar(50) NOT NULL,
+            payment_token varchar(255) DEFAULT '' NOT NULL,
+            payment_expires_at datetime DEFAULT NULL,
+            gateway varchar(50) DEFAULT '' NOT NULL,
+            transaction_id varchar(255) DEFAULT '' NOT NULL,
+            refund_id varchar(255) DEFAULT '' NOT NULL,
+            refund_amount decimal(10,2) DEFAULT 0 NOT NULL,
+            refund_status varchar(50) DEFAULT '' NOT NULL,
+            refunded_at datetime DEFAULT NULL,
+            invoice_number varchar(20) DEFAULT '' NOT NULL,
+            notes text DEFAULT '' NOT NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            archived_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            KEY homestay_id (homestay_id),
+            KEY dates (check_in, check_out)
         ) $collate;";
 
         dbDelta( $sql1 );
@@ -151,13 +339,72 @@ class Installer {
         dbDelta( $sql4 );
         dbDelta( $sql5 );
         dbDelta( $sql6 );
+        dbDelta( $sql6b );
+        dbDelta( $sql6c );
+        dbDelta( $sql7 );
+        dbDelta( $sql8 );
+        dbDelta( $sql9 );
+        dbDelta( $sql10 );
+        dbDelta( $sql11 );
+        dbDelta( $sql12 );
+        dbDelta( $sql13 );
+
+        // ── Enterprise Compliance: Audit Log Immutability Triggers ───────
+        $wpdb->query( "DROP TRIGGER IF EXISTS prevent_audit_log_update" );
+        $wpdb->query( "
+            CREATE TRIGGER prevent_audit_log_update 
+            BEFORE UPDATE ON {$table_audit} 
+            FOR EACH ROW 
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'HHB Enterprise Guard: Audit log records are immutable and cannot be updated.'
+        " );
+
+        $wpdb->query( "DROP TRIGGER IF EXISTS prevent_audit_log_delete" );
+        $wpdb->query( "
+            CREATE TRIGGER prevent_audit_log_delete 
+            BEFORE DELETE ON {$table_audit} 
+            FOR EACH ROW 
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'HHB Enterprise Guard: Audit log records are immutable and cannot be deleted.'
+        " );
+
+        // Seed invoice sequence row if not exists.
+        $seq_count = $wpdb->get_var( "SELECT COUNT(*) FROM $table_invoice_seq" );
+        if ( ! $seq_count ) {
+            $wpdb->insert( $table_invoice_seq, [ 'last_invoice_number' => 0 ] );
+        }
 
         // Update schema version.
         update_option( 'hhb_db_version', self::DB_VERSION );
+
+        // Register custom roles (NEW for Phase 8)
+        self::register_roles();
 
         // Schedule cleanup cron if not scheduled.
         if ( ! wp_next_scheduled( 'himalayan_cleanup_expired_holds' ) ) {
             wp_schedule_event( time(), 'five_minutes', 'himalayan_cleanup_expired_holds' );
         }
+
+        // Schedule payment expiry checker (every 5 minutes).
+        if ( ! wp_next_scheduled( 'hhb_check_payment_expiry' ) ) {
+            wp_schedule_event( time(), 'five_minutes', 'hhb_check_payment_expiry' );
+        }
+
+        // Schedule iCal sync cron if not scheduled.
+        if ( ! wp_next_scheduled( 'hhb_sync_ical_feeds' ) ) {
+            wp_schedule_event( time(), 'fifteen_minutes', 'hhb_sync_ical_feeds' );
+        }
+    }
+
+    private static function register_roles() {
+        // Add Host role
+        add_role(
+            'hhb_host',
+            __( 'Host', 'himalayan-homestay-bookings' ),
+            array(
+                'read'                => true,
+                'edit_posts'          => true,   // Allow them to edit their own posts
+                'upload_files'        => true,   // Allow uploading property images
+                'manage_hhb_property' => true,   // Custom capability for API access
+            )
+        );
     }
 }

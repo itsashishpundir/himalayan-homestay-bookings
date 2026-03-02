@@ -19,7 +19,8 @@ class CalendarPage {
         add_action( 'admin_menu', [ __CLASS__, 'add_menu_page' ] );
         add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
         add_action( 'wp_ajax_hhb_calendar_data', [ __CLASS__, 'ajax_calendar_data' ] );
-        add_action( 'wp_ajax_hhb_add_block', [ __CLASS__, 'ajax_add_block' ] );
+        add_action( 'wp_ajax_hhb_add_block',     [ __CLASS__, 'ajax_add_block' ] );
+        add_action( 'wp_ajax_hhb_delete_block',  [ __CLASS__, 'ajax_delete_block' ] );
     }
 
     public static function add_menu_page(): void {
@@ -65,7 +66,7 @@ class CalendarPage {
                     p.post_title as homestay_title
              FROM {$table} b
              LEFT JOIN {$wpdb->posts} p ON b.homestay_id = p.ID
-             WHERE b.status IN ('pending_inquiry','approved','confirmed')
+             WHERE b.status IN ('pending_inquiry','approved','confirmed','blocked')
              AND b.check_in <= %s AND b.check_out >= %s
              ORDER BY b.check_in",
             $end_date, $start_date
@@ -106,11 +107,40 @@ class CalendarPage {
             'check_in'       => $check_in,
             'check_out'      => $check_out,
             'total_price'    => 0,
-            'status'         => 'confirmed',
+            'status'         => 'blocked',    // ← distinct status, NOT 'confirmed'
             'notes'          => 'Manual block by admin.',
         ]);
 
         wp_send_json_success( [ 'id' => $wpdb->insert_id ] );
+    }
+
+    // -------------------------------------------------------------------------
+    // AJAX: Delete a manual block.
+    // -------------------------------------------------------------------------
+
+    public static function ajax_delete_block(): void {
+        check_ajax_referer( 'hhb_calendar_nonce', 'nonce' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'Permission denied.' );
+        }
+
+        $block_id = intval( $_POST['block_id'] ?? 0 );
+        if ( ! $block_id ) {
+            wp_send_json_error( 'Invalid block ID.' );
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'himalayan_bookings';
+
+        // Only allow deleting blocked entries, never real bookings.
+        $deleted = $wpdb->delete( $table, [ 'id' => $block_id, 'status' => 'blocked' ], [ '%d', '%s' ] );
+
+        if ( $deleted ) {
+            wp_send_json_success( [ 'deleted' => $block_id ] );
+        } else {
+            wp_send_json_error( 'Could not delete block — it may not exist or is not a manual block.' );
+        }
     }
 
     // -------------------------------------------------------------------------
