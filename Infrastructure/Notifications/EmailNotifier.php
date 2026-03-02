@@ -424,9 +424,10 @@ class EmailNotifier {
 
         // ── Send ─────────────────────────────────────────────────────────
         $from_email = get_option( 'hhb_smtp_email' ) ?: get_option( 'admin_email' );
+        $from_name  = get_option( 'hhb_smtp_from_name' ) ?: get_bloginfo( 'name' );
         $headers = [
             'Content-Type: text/html; charset=UTF-8',
-            'From: ' . get_bloginfo( 'name' ) . ' <' . $from_email . '>',
+            'From: ' . $from_name . ' <' . $from_email . '>',
         ];
 
         try {

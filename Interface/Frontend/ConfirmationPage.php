@@ -130,6 +130,13 @@ class ConfirmationPage {
 			$amount_due      = (float) ( $booking['deposit_amount'] > 0 ? $booking['deposit_amount'] : $booking['total_price'] );
 			$amount_in_paise = round( $amount_due * 100 );
             $settings        = get_option( 'hhb_payment_settings', [] );
+            $currency        = get_post_meta( $booking['homestay_id'], 'currency', true ) ?: 'INR';
+            // PayPal does not support INR. Convert to USD for PayPal processing.
+            // The guest's invoice still shows INR; PayPal charges the USD equivalent.
+            $inr_to_usd_rate    = 0.012; // approximate: 1 INR ≈ 0.012 USD
+            $paypal_currency    = 'USD';
+            $paypal_amount_usd  = round( $amount_due * $inr_to_usd_rate, 2 );
+            if ( $paypal_amount_usd < 0.01 ) { $paypal_amount_usd = 0.01; } // PayPal minimum
 
 			$header_bg   = 'linear-gradient(135deg,#e65100,#ff8f00)';
 			$icon_path   = 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z';
@@ -142,7 +149,7 @@ class ConfirmationPage {
 				esc_html( $hs_title )
 			);
 
-            $badge_color = \Himalayan\Homestay\Infrastructure\Database\BookingManager::get_status_color( $status );
+            $badge_color = \Himalayan\Homestay\Domain\Booking\BookingStatus::get_color( $status );
 			$badge_bg    = $badge_color . '20';
 			$badge_text  = '⏳ ' . __( 'Awaiting Payment', 'himalayan-homestay-bookings' );
 			$status_val  = '<span style="color:' . $badge_color . ';font-weight:700;">⏳ ' . __( 'Pending', 'himalayan-homestay-bookings' ) . '</span>';
@@ -161,15 +168,28 @@ class ConfirmationPage {
                         $razorpay_order_id = $order_data['id'];
                         $razorpay_key      = $gateway->get_key_id();
                         $buttons_html .= '<button id="hhb-pay-razorpay" class="hhb-btn-pay" style="background:#0d47a1;color:#fff;border:none;padding:14px 24px;border-radius:8px;font-weight:700;cursor:pointer;width:100%;">Pay securely with Razorpay</button>';
-                    } else {
                     }
                 }
             }
+
+            $paypal_client_id = '';
+            if ( ! empty( $settings['paypal_enabled'] ) && 'yes' === $settings['paypal_enabled'] ) {
+                $paypal_gw = new \Himalayan\Homestay\Infrastructure\Payments\PayPalGateway();
+                if ( $paypal_gw->is_active() ) {
+                    $paypal_client_id = $paypal_gw->get_client_id();
+                    $buttons_html .= '<div id="paypal-button-container"></div>';
+                }
+            }
+
 
             $buttons_html .= '</div>';
             
             // Script tag for Razorpay checkout integration
             $buttons_html .= '<script src="https://checkout.razorpay.com/v1/checkout.js"></script>';
+            if ( $paypal_client_id ) {
+                $buttons_html .= '<script src="https://www.paypal.com/sdk/js?client-id=' . esc_attr( $paypal_client_id ) . '&currency=' . esc_attr( $paypal_currency ) . '"></script>';
+            }
+
             $buttons_html .= '<script>
                 document.addEventListener("DOMContentLoaded", function() {
                     const errBox = document.getElementById("hhb-payment-error");
@@ -178,6 +198,8 @@ class ConfirmationPage {
 
                     function showError(msg) {
                         errBox.style.display = "block";
+                        errBox.style.color = "#d32f2f";
+                        errBox.style.backgroundColor = "#ffebee";
                         errBox.textContent = msg;
                     }
 
@@ -202,6 +224,49 @@ class ConfirmationPage {
                             triggerDropBooking();
                         }
                     });
+
+                    // PayPal Logic
+                    if ("' . esc_js( $paypal_client_id ) . '" && window.paypal) {
+                        paypal.Buttons({
+                            createOrder: function(data, actions) {
+                                return actions.order.create({
+                                    purchase_units: [{
+                                        amount: {
+                                            currency_code: "' . esc_js( $paypal_currency ) . '",
+                                            value: "' . esc_js( $paypal_amount_usd ) . '"
+                                        },
+                                        description: "Booking #' . intval( $booking_id ) . ' - ' . esc_js( $hs_title ) . '"
+                                    }]
+                                });
+                            },
+                            onApprove: function(data, actions) {
+                                isPaymentComplete = true; // prevent drop
+                                return actions.order.capture().then(function(details) {
+                                    errBox.style.display = "block";
+                                    errBox.style.color = "#16a34a";
+                                    errBox.style.backgroundColor = "#dcfce7";
+                                    errBox.innerText = "Payment Successful! Verifying...";
+                                    
+                                    fetch("' . esc_url( rest_url( 'himalayan/v1/paypal-verify' ) ) . '", {
+                                        method: "POST", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                            paypal_order_id: data.orderID,
+                                            booking_id: ' . intval( $booking_id ) . ',
+                                            token: "' . esc_js( $booking['payment_token'] ) . '"
+                                        })
+                                    }).then(res => res.json()).then(resData => {
+                                        if(resData.success) { window.location.reload(); }
+                                        else { showError(resData.message || "Verification failed."); isPaymentComplete = false; }
+                                    }).catch(err => {
+                                        showError("Network error during verification."); isPaymentComplete = false;
+                                    });
+                                });
+                            },
+                            onError: function(err) {
+                                showError("PayPal Payment Failed: " + err);
+                            }
+                        }).render("#paypal-button-container");
+                    }
 
                     // Razorpay Logic
                     const rzpBtn = document.getElementById("hhb-pay-razorpay");

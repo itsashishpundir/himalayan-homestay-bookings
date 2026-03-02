@@ -229,7 +229,7 @@ class BookingWidget {
                         
                         <?php 
                         $opts = get_option( \Himalayan\Homestay\Interface\Admin\SettingsPage::OPTION_KEY, [] );
-                        $has_gateway = (!empty($opts['stripe_enabled']) && $opts['stripe_enabled'] === 'yes') || (!empty($opts['razorpay_enabled']) && $opts['razorpay_enabled'] === 'yes');
+                        $has_gateway = (!empty($opts['paypal_enabled']) && $opts['paypal_enabled'] === 'yes') || (!empty($opts['razorpay_enabled']) && $opts['razorpay_enabled'] === 'yes');
                         $has_cash = (!empty($opts['cash_mode_enabled']) && $opts['cash_mode_enabled'] === 'yes');
                         
                         if ( $has_gateway ) : ?>
@@ -348,7 +348,7 @@ class BookingWidget {
                 $opts = get_option( \Himalayan\Homestay\Interface\Admin\SettingsPage::OPTION_KEY, [] );
                 echo !empty($opts['fake_gateway_enabled']) && $opts['fake_gateway_enabled'] === 'yes' ? 'true' : 'false';
             ?>;
-            const stripeGateway  = <?php echo !empty($opts['stripe_enabled']) && $opts['stripe_enabled'] === 'yes' ? 'true' : 'false'; ?>;
+            const paypalGateway  = <?php echo !empty($opts['paypal_enabled']) && $opts['paypal_enabled'] === 'yes' ? 'true' : 'false'; ?>;
             const razorpayGateway  = <?php echo !empty($opts['razorpay_enabled']) && $opts['razorpay_enabled'] === 'yes' ? 'true' : 'false'; ?>;
             const minNights    = parseInt(widget.dataset.minNights) || 1;
             const checkInEl    = document.getElementById("hhb-check-in");

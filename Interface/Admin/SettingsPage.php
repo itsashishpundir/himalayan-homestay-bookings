@@ -141,47 +141,59 @@ class SettingsPage {
             ]
         );
 
-        // Section: Stripe
+        // Section: PayPal
         add_settings_section(
-            'hhb_section_stripe',
-            __( 'Stripe Settings', 'himalayan-homestay-bookings' ),
-            [ __CLASS__, 'render_section_stripe' ],
+            'hhb_section_paypal',
+            __( 'PayPal Settings', 'himalayan-homestay-bookings' ),
+            [ __CLASS__, 'render_section_paypal' ],
             'hhb-settings'
         );
 
         add_settings_field(
-            'stripe_enabled',
-            __( 'Enable Stripe', 'himalayan-homestay-bookings' ),
+            'paypal_enabled',
+            __( 'Enable PayPal', 'himalayan-homestay-bookings' ),
             [ __CLASS__, 'render_checkbox_field' ],
             'hhb-settings',
-            'hhb_section_stripe',
+            'hhb_section_paypal',
             [
-                'key'   => 'stripe_enabled',
-                'label' => __( 'Allow customers to securely pay via Stripe (Credit/Debit Cards globally).', 'himalayan-homestay-bookings' ),
+                'key'   => 'paypal_enabled',
+                'label' => __( 'Allow customers to securely pay via PayPal (Globally).', 'himalayan-homestay-bookings' ),
             ]
         );
 
         add_settings_field(
-            'stripe_publishable_key',
-            __( 'Publishable Key', 'himalayan-homestay-bookings' ),
+            'paypal_client_id',
+            __( 'Client ID', 'himalayan-homestay-bookings' ),
             [ __CLASS__, 'render_text_field' ],
             'hhb-settings',
-            'hhb_section_stripe',
+            'hhb_section_paypal',
             [
-                'key'         => 'stripe_publishable_key',
-                'description' => __( 'Your Stripe Publishable API Key.', 'himalayan-homestay-bookings' ),
+                'key'         => 'paypal_client_id',
+                'description' => __( 'Your PayPal REST API Client ID.', 'himalayan-homestay-bookings' ),
             ]
         );
 
         add_settings_field(
-            'stripe_secret_key',
-            __( 'Secret Key', 'himalayan-homestay-bookings' ),
+            'paypal_client_secret',
+            __( 'Client Secret', 'himalayan-homestay-bookings' ),
             [ __CLASS__, 'render_password_field' ],
             'hhb-settings',
-            'hhb_section_stripe',
+            'hhb_section_paypal',
             [
-                'key'         => 'stripe_secret_key',
-                'description' => __( 'Your Stripe Secret API Key. Keep this safe.', 'himalayan-homestay-bookings' ),
+                'key'         => 'paypal_client_secret',
+                'description' => __( 'Your PayPal REST API Secret. Keep this safe.', 'himalayan-homestay-bookings' ),
+            ]
+        );
+
+        add_settings_field(
+            'paypal_environment',
+            __( 'Environment', 'himalayan-homestay-bookings' ),
+            [ __CLASS__, 'render_text_field' ],
+            'hhb-settings',
+            'hhb_section_paypal',
+            [
+                'key'         => 'paypal_environment',
+                'description' => __( 'Enter "sandbox" for testing or "live" for production.', 'himalayan-homestay-bookings' ),
             ]
         );
         // Section: Cash Mode
@@ -278,15 +290,16 @@ class SettingsPage {
         
         if ( $tab === 'payment_gateways' ) {
             $sanitized['razorpay_enabled'] = ! empty( $input['razorpay_enabled'] ) ? 'yes' : 'no';
-            $sanitized['stripe_enabled']   = ! empty( $input['stripe_enabled'] ) ? 'yes' : 'no';
+            $sanitized['paypal_enabled']   = ! empty( $input['paypal_enabled'] ) ? 'yes' : 'no';
             $sanitized['fake_gateway_enabled'] = ! empty( $input['fake_gateway_enabled'] ) ? 'yes' : 'no';
             $sanitized['cash_mode_enabled'] = ! empty( $input['cash_mode_enabled'] ) ? 'yes' : 'no';
             
             if ( isset( $input['razorpay_key_id'] ) ) $sanitized['razorpay_key_id'] = sanitize_text_field( $input['razorpay_key_id'] );
             if ( isset( $input['razorpay_key_secret'] ) ) $sanitized['razorpay_key_secret'] = sanitize_text_field( $input['razorpay_key_secret'] );
             if ( isset( $input['razorpay_webhook_secret'] ) ) $sanitized['razorpay_webhook_secret'] = sanitize_text_field( $input['razorpay_webhook_secret'] );
-            if ( isset( $input['stripe_publishable_key'] ) ) $sanitized['stripe_publishable_key'] = sanitize_text_field( $input['stripe_publishable_key'] );
-            if ( isset( $input['stripe_secret_key'] ) ) $sanitized['stripe_secret_key'] = sanitize_text_field( $input['stripe_secret_key'] );
+            if ( isset( $input['paypal_client_id'] ) ) $sanitized['paypal_client_id'] = sanitize_text_field( $input['paypal_client_id'] );
+            if ( isset( $input['paypal_client_secret'] ) ) $sanitized['paypal_client_secret'] = sanitize_text_field( $input['paypal_client_secret'] );
+            if ( isset( $input['paypal_environment'] ) ) $sanitized['paypal_environment'] = sanitize_text_field( $input['paypal_environment'] );
         } elseif ( $tab === 'gdpr_privacy' ) {
             if ( isset( $input['privacy_policy_url'] ) ) $sanitized['privacy_policy_url'] = esc_url_raw( $input['privacy_policy_url'] );
         } elseif ( $tab === 'email_templates' ) {
@@ -347,9 +360,9 @@ class SettingsPage {
         echo '<p>' . esc_html__( 'Configure privacy settings to comply with international regulations like GDPR and CCPA.', 'himalayan-homestay-bookings' ) . '</p>';
     }
 
-    public static function render_section_stripe(): void {
+    public static function render_section_paypal(): void {
         echo '<hr style="margin:40px 0;">';
-        echo '<p>' . esc_html__( 'Configure Stripe to easily accept global credit and debit card payments.', 'himalayan-homestay-bookings' ) . '</p>';
+        echo '<p>' . esc_html__( 'Configure PayPal to easily accept global payments securely.', 'himalayan-homestay-bookings' ) . '</p>';
     }
 
 
@@ -648,6 +661,13 @@ class SettingsPage {
                         
                         <table class="form-table">
                             <tr>
+                                <th scope="row"><label for="smtp_from_name">Sender Name</label></th>
+                                <td>
+                                    <input type="text" name="smtp_from_name" id="smtp_from_name" class="regular-text" value="<?php echo esc_attr( get_option('hhb_smtp_from_name', get_bloginfo('name')) ); ?>" placeholder="e.g. Himalayan Homestays">
+                                    <p class="description">The name displayed in the recipient's inbox (e.g., "From: Himalayan Homestays").</p>
+                                </td>
+                            </tr>
+                            <tr>
                                 <th scope="row"><label for="smtp_email">Gmail Address</label></th>
                                 <td>
                                     <input type="email" name="smtp_email" id="smtp_email" class="regular-text" value="<?php echo esc_attr( get_option('hhb_smtp_email') ); ?>" placeholder="youremail@gmail.com">
@@ -826,9 +846,11 @@ class SettingsPage {
             wp_die( 'Security check failed.' );
         }
 
+        $from_name = sanitize_text_field( $_POST['smtp_from_name'] ?? get_bloginfo('name') );
         $email = sanitize_email( $_POST['smtp_email'] ?? '' );
         $pass  = sanitize_text_field( str_replace(' ', '', $_POST['smtp_pass'] ?? '') );
         
+        update_option( 'hhb_smtp_from_name', $from_name );
         update_option( 'hhb_smtp_email', $email );
         update_option( 'hhb_smtp_pass', $pass );
 

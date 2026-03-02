@@ -31,7 +31,7 @@ class RESTController {
             'callback'            => [ __CLASS__, 'check_availability' ],
             'permission_callback' => '__return_true',
             'args'                => [
-                'homestay_id' => [ 'required' => true, 'validate_callback' => function( $v ) { return is_numeric( $v ); } ],
+                'homestay_id' => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'check_in'    => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
                 'check_out'   => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
             ],
@@ -43,10 +43,10 @@ class RESTController {
             'callback'            => [ __CLASS__, 'calculate_price' ],
             'permission_callback' => '__return_true',
             'args'                => [
-                'homestay_id' => [ 'required' => true, 'validate_callback' => function( $v ) { return is_numeric( $v ); } ],
+                'homestay_id' => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'check_in'    => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
                 'check_out'   => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
-                'guests'      => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $v ) { return is_numeric( $v ); } ],
+                'guests'      => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'services'    => [ 'required' => false, 'default' => [] ],
             ],
         ] );
@@ -57,13 +57,13 @@ class RESTController {
             'callback'            => [ __CLASS__, 'create_booking' ],
             'permission_callback' => '__return_true',
             'args'                => [
-                'homestay_id'    => [ 'required' => true, 'validate_callback' => function( $v ) { return is_numeric( $v ); } ],
+                'homestay_id'    => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'check_in'       => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
                 'check_out'      => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
                 'customer_name'  => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
                 'customer_email' => [ 'required' => true, 'sanitize_callback' => 'sanitize_email' ],
                 'customer_phone' => [ 'required' => false, 'sanitize_callback' => 'sanitize_text_field' ],
-                'guests'         => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $v ) { return is_numeric( $v ); } ],
+                'guests'         => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'notes'          => [ 'required' => false, 'default' => '', 'sanitize_callback' => 'sanitize_textarea_field' ],
                 'services'       => [ 'required' => false, 'default' => [] ],
             ],
@@ -78,7 +78,19 @@ class RESTController {
                 'razorpay_payment_id' => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
                 'razorpay_order_id'   => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
                 'razorpay_signature'  => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
-                'booking_id'          => [ 'required' => true, 'validate_callback' => function( $v ) { return is_numeric( $v ); } ],
+                'booking_id'          => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
+                'token'               => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
+            ],
+        ] );
+
+        // PayPal Verify Endpoint
+        register_rest_route( $ns, '/paypal-verify', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ __CLASS__, 'verify_paypal_payment' ],
+            'permission_callback' => '__return_true',
+            'args'                => [
+                'paypal_order_id'     => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
+                'booking_id'          => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'token'               => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
             ],
         ] );
@@ -89,7 +101,7 @@ class RESTController {
             'callback'            => [ __CLASS__, 'drop_booking' ],
             'permission_callback' => '__return_true',
             'args'                => [
-                'booking_id' => [ 'required' => true, 'validate_callback' => function( $v ) { return is_numeric( $v ); } ],
+                'booking_id' => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'token'      => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
             ],
         ] );
@@ -184,18 +196,15 @@ class RESTController {
         if ( $payment_mode_input === 'gateway' ) {
             $opts = get_option( \Himalayan\Homestay\Interface\Admin\SettingsPage::OPTION_KEY, [] );
             $rzp_enabled = ( ! empty( $opts['razorpay_enabled'] ) && 'yes' === $opts['razorpay_enabled'] );
+            $paypal_enabled = ( ! empty( $opts['paypal_enabled'] ) && 'yes' === $opts['paypal_enabled'] );
             
-            $gateway_active = false;
-            if ( $rzp_enabled ) {
-                $gateway_active = ( new \Himalayan\Homestay\Infrastructure\Payments\RazorpayGateway() )->is_active();
-            }
-            
-            // If the admin enabled Razorpay but forgot to add the live keys,
-            // quietly fallback to Cash enquiry mode to prevent a broken checkout loop.
-            if ( ! $gateway_active ) {
-                $payment_mode = 'Cash'; 
-            } else {
+            if ( $rzp_enabled && ( new \Himalayan\Homestay\Infrastructure\Payments\RazorpayGateway() )->is_active() ) {
                 $payment_mode = 'Razorpay';
+            } elseif ( $paypal_enabled && ( new \Himalayan\Homestay\Infrastructure\Payments\PayPalGateway() )->is_active() ) {
+                $payment_mode = 'PayPal';
+            } else {
+                // If the user picked gateway but none are correctly configured, fallback to Cash
+                $payment_mode = 'Cash'; 
             }
         } elseif ( $payment_mode_input === 'cash' ) {
             $payment_mode = 'Cash';
@@ -393,6 +402,76 @@ class RESTController {
     }
 
     /**
+     * Verify PayPal Payment from the frontend Checkout.
+     * Standalone PayPal path â€” does NOT use Razorpay's amount/currency guards.
+     */
+    public static function verify_paypal_payment( \WP_REST_Request $request ) {
+        global $wpdb;
+
+        $paypal_order_id = sanitize_text_field( $request->get_param('paypal_order_id') );
+        $booking_id      = intval( $request->get_param('booking_id') );
+        $token           = sanitize_text_field( $request->get_param('token') );
+
+        if ( ! $paypal_order_id || ! $booking_id ) {
+            return new \WP_Error( 'missing_params', 'Required parameters missing.', [ 'status' => 400 ] );
+        }
+
+        // 1. Load booking and verify token
+        $booking_manager = new BookingManager();
+        $booking         = $booking_manager->get_booking( $booking_id );
+
+        if ( ! $booking || $booking->payment_token !== $token ) {
+            return new \WP_Error( 'invalid_booking', 'Invalid booking or token.', [ 'status' => 400 ] );
+        }
+
+        // 2. Already confirmed?
+        if ( in_array( $booking->status, [ 'confirmed', 'refunded' ], true ) ) {
+            return rest_ensure_response( [ 'success' => true, 'message' => 'Payment already processed.' ] );
+        }
+
+        // 3. Server-side verify / capture the PayPal order
+        $gateway = new \Himalayan\Homestay\Infrastructure\Payments\PayPalGateway();
+        $verified = $gateway->verify_order( $paypal_order_id );
+        if ( ! $verified ) {
+            return new \WP_Error( 'paypal_verify_failed', 'PayPal order verification failed.', [ 'status' => 400 ] );
+        }
+
+        // 4. Idempotency gate
+        $event_id = 'paypal_' . $paypal_order_id;
+        $wpdb->query( 'START TRANSACTION' );
+        $inserted = $wpdb->insert( $wpdb->prefix . 'himalayan_webhook_events', [
+            'event_id'         => $event_id,
+            'booking_id'       => $booking_id,
+            'event_type'       => 'paypal.payment.captured',
+            'raw_payload_hash' => hash( 'sha256', "{$event_id}_{$booking_id}" ),
+        ] );
+
+        if ( ! $inserted ) {
+            $wpdb->query( 'ROLLBACK' );
+            return rest_ensure_response( [ 'success' => true, 'message' => 'Already processed.' ] );
+        }
+
+        // 5. Confirm booking with 'paypal' gateway
+        try {
+            $confirmed = $booking_manager->confirm_payment( $booking_id, $paypal_order_id, 'paypal' );
+        } catch ( \Exception $e ) {
+            $wpdb->query( 'ROLLBACK' );
+            error_log( 'HHB PayPal confirm_payment exception: ' . $e->getMessage() );
+            return new \WP_Error( 'confirmation_failed', $e->getMessage(), [ 'status' => 500 ] );
+        }
+
+        if ( ! $confirmed ) {
+            $wpdb->query( 'ROLLBACK' );
+            return new \WP_Error( 'transition_failed', 'Status transition failed.', [ 'status' => 500 ] );
+        }
+
+        $wpdb->query( 'COMMIT' );
+
+        return rest_ensure_response( [ 'success' => true, 'message' => 'Payment verified and booking confirmed.' ] );
+    }
+
+
+    /**
      * Handle Razorpay server-to-server webhook.
      */
     public static function handle_razorpay_webhook( \WP_REST_Request $request ) {
@@ -471,7 +550,7 @@ class RESTController {
                 return new \WP_REST_Response( [ 'status' => 'refund_processed' ], 200 );
             }
 
-            // Unhandled event type — acknowledge to stop retries
+            // Unhandled event type â€” acknowledge to stop retries
             return new \WP_REST_Response( [ 'status' => 'event_ignored' ], 200 );
 
         } catch ( \Exception $e ) {

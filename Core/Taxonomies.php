@@ -29,7 +29,7 @@ class Taxonomies {
             'show_ui'           => true,
             'show_admin_column' => true,
             'query_var'         => true,
-            'rewrite'           => array( 'slug' => 'location', 'with_front' => false ),
+            'rewrite'           => array( 'slug' => 'location', 'with_front' => false, 'hierarchical' => true ),
             'show_in_rest'      => true,
         );
         register_taxonomy( 'hhb_location', array( 'hhb_homestay' ), $location_args );
