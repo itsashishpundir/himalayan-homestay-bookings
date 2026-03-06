@@ -222,8 +222,20 @@ $total_found   = $wp_query->found_posts;
     <div class="hhb-results-header">
       <div class="hhb-results-count">
         <span><?php echo number_format($total_found); ?></span>
-        <?php if (is_tax()) : ?>
-          <?php $queried = get_queried_object(); ?> properties in <?php echo esc_html($queried->name ?? ''); ?>
+        <?php if (is_tax('hhb_location')) : ?>
+          <?php 
+            $queried = get_queried_object(); 
+            $prefix  = get_theme_mod('himalayanmart_homestay_archive_prefix', 'Explore Homestays in ');
+            $suffix  = get_theme_mod('himalayanmart_homestay_archive_suffix', '');
+          ?>
+          properties in <?php echo esc_html($prefix . ($queried->name ?? '') . $suffix); ?>
+        <?php elseif (is_tax('hhb_property_type')) : ?>
+          <?php 
+            $queried = get_queried_object(); 
+            $prefix  = get_theme_mod('himalayanmart_property_type_archive_prefix', 'Explore ');
+            $suffix  = get_theme_mod('himalayanmart_property_type_archive_suffix', ' Stays');
+          ?>
+          properties matching <?php echo esc_html($prefix . ($queried->name ?? '') . $suffix); ?>
         <?php else : ?>
           properties found
         <?php endif; ?>

@@ -18,6 +18,63 @@ class ReviewDisplay {
 
     public static function init(): void {
         add_filter( 'the_content', [ __CLASS__, 'append_reviews_to_content' ] );
+        add_action( 'wp_ajax_hhb_load_reviews',        [ __CLASS__, 'ajax_load_reviews' ] );
+        add_action( 'wp_ajax_nopriv_hhb_load_reviews', [ __CLASS__, 'ajax_load_reviews' ] );
+    }
+
+    public static function ajax_load_reviews(): void {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hhb_reviews';
+
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+            wp_send_json_error( 'Reviews table not found.' );
+        }
+
+        $reviews = $wpdb->get_results(
+            "SELECT r.*, p.post_title AS homestay_name
+             FROM {$table} r
+             LEFT JOIN {$wpdb->posts} p ON r.homestay_id = p.ID
+             WHERE r.status = 'approved'
+             ORDER BY r.created_at DESC
+             LIMIT 6"
+        );
+
+        if ( empty( $reviews ) ) {
+            wp_send_json_error( 'No reviews found.' );
+        }
+
+        ob_start();
+        foreach ( $reviews as $review ) :
+            $initial   = esc_html( strtoupper( substr( $review->customer_name, 0, 1 ) ) );
+            $name      = esc_html( $review->customer_name );
+            $comment   = esc_html( wp_trim_words( $review->comment, 30, '…' ) );
+            $property  = esc_html( $review->homestay_name );
+            $rating    = (int) $review->rating;
+        ?>
+        <div class="hhb-review-card opacity-0 translate-y-4 transition-all duration-700 ease-out">
+            <div class="hhb-review-stars mb-3">
+                <?php for ( $s = 1; $s <= 5; $s++ ) : ?>
+                    <span class="material-symbols-outlined text-base" style="font-variation-settings: 'FILL' <?php echo $s <= $rating ? '1' : '0'; ?>">star</span>
+                <?php endfor; ?>
+            </div>
+            <p class="text-slate-600 text-sm italic leading-relaxed mb-5">
+                "<?php echo $comment; ?>"
+            </p>
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-sm">
+                    <?php echo $initial; ?>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-slate-900"><?php echo $name; ?></p>
+                    <?php if ( $property ) : ?>
+                        <p class="text-[11px] text-slate-400"><?php echo $property; ?></p>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <?php endforeach;
+
+        wp_send_json_success( ob_get_clean() );
     }
 
     public static function append_reviews_to_content( $content ) {

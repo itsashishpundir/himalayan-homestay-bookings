@@ -33,6 +33,7 @@ class TemplateLoader {
     private array $page_template_map = [
         'host-panel-template'      => 'dashboard.php',
         'become-host-template'     => 'become-host.php',
+        'legal-page-template'      => 'legal-page.php',
     ];
 
     /**
@@ -52,6 +53,7 @@ class TemplateLoader {
     public function register_page_templates( array $templates ): array {
         $templates['host-panel-template']  = __( 'Host Dashboard (Plugin)', 'himalayan-homestay-bookings' );
         $templates['become-host-template'] = __( 'Become a Host (Plugin)', 'himalayan-homestay-bookings' );
+        $templates['legal-page-template']  = __( 'Legal Page (Plugin)', 'himalayan-homestay-bookings' );
         return $templates;
     }
 
