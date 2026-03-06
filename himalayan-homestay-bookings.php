@@ -215,6 +215,10 @@ final class Himalayan_Homestay_Bookings {
 
         // Frontend Booking Widget & Pages.
         if ( ! is_admin() ) {
+            // Template Loader — serves plugin default templates for CPT / taxonomy / custom dashboard pages.
+            // The theme always wins if it provides the same template filename.
+            new \Himalayan\Homestay\Interface\Frontend\TemplateLoader();
+
             \Himalayan\Homestay\Interface\Frontend\BookingWidget::init();
             \Himalayan\Homestay\Interface\Frontend\ConfirmationPage::init();
             \Himalayan\Homestay\Interface\Frontend\MyAccount::init();
@@ -259,7 +263,65 @@ final class Himalayan_Homestay_Bookings {
         // Cron Action.
         add_action( 'himalayan_cleanup_expired_holds', [ $this, 'cleanup_holds' ] );
         // The iCal sync action is registered within iCalManager::init()
+
+        // ── Archive Filter Query ─────────────────────────────────────────────
+        // Filter the main WP_Query on the hhb_homestay archive by ?location= and ?type= GET params.
+        // This was previously in the theme's functions.php — now owned by the plugin.
+        add_action( 'pre_get_posts', function( $query ) {
+            if ( is_admin() || ! $query->is_main_query() ) {
+                return;
+            }
+            if ( ! $query->is_post_type_archive( 'hhb_homestay' ) && ! $query->is_tax( 'hhb_location' ) && ! $query->is_tax( 'hhb_property_type' ) ) {
+                return;
+            }
+
+            $tax_query = [];
+
+            $location = isset( $_GET['location'] ) ? sanitize_text_field( $_GET['location'] ) : '';
+            if ( $location ) {
+                $tax_query[] = [
+                    'taxonomy' => 'hhb_location',
+                    'field'    => 'slug',
+                    'terms'    => $location,
+                ];
+            }
+
+            $type = isset( $_GET['type'] ) ? sanitize_text_field( $_GET['type'] ) : '';
+            if ( $type ) {
+                $tax_query[] = [
+                    'taxonomy' => 'hhb_property_type',
+                    'field'    => 'slug',
+                    'terms'    => $type,
+                ];
+            }
+
+            if ( ! empty( $tax_query ) ) {
+                $query->set( 'tax_query', $tax_query );
+            }
+        } );
+
+        // ── SMTP Configuration ───────────────────────────────────────────────
+        // Configures PHPMailer to use SMTP settings stored via the plugin's Settings page.
+        // Was previously in the theme's functions.php — now owned by the plugin.
+        add_action( 'phpmailer_init', function( $phpmailer ) {
+            $smtp_email = get_option( 'hhb_smtp_email' );
+            $smtp_pass  = get_option( 'hhb_smtp_pass' );
+
+            if ( $smtp_email && $smtp_pass ) {
+                $phpmailer->isSMTP();
+                $phpmailer->Host       = 'smtp.gmail.com';
+                $phpmailer->SMTPAuth   = true;
+                $phpmailer->Port       = 465;
+                $phpmailer->Username   = $smtp_email;
+                $phpmailer->Password   = $smtp_pass;
+                $phpmailer->SMTPSecure = 'ssl';
+                $phpmailer->From       = $smtp_email;
+                $from_name             = get_option( 'hhb_smtp_from_name' );
+                $phpmailer->FromName   = ! empty( $from_name ) ? $from_name : get_bloginfo( 'name' );
+            }
+        } );
     }
+
 
     /**
      * Auto-upgrade database schema when the plugin version changes.
