@@ -66,6 +66,7 @@ final class Himalayan_Homestay_Bookings {
         // Admin Interfaces.
         if ( is_admin() ) {
             \Himalayan\Homestay\Interface\Admin\HomestayMetaBoxes::init();
+            // RoomMetaBoxes removed — rooms are managed inside the Homestay edit screen.
             \Himalayan\Homestay\Interface\Admin\BookingsPage::init();
             \Himalayan\Homestay\Interface\Admin\CalendarPage::init();
             \Himalayan\Homestay\Interface\Admin\TaxonomyMeta::init();
@@ -296,3 +297,64 @@ function HHB() {
 require_once HHB_PLUGIN_DIR . 'Infrastructure/Database/Installer.php';
 
 $GLOBALS['himalayan_homestay_bookings'] = HHB();
+
+/**
+ * Get the price range (min–max base price) for a homestay based on its rooms.
+ *
+ * Reads cached meta set on homestay save. Falls back to a live query if meta is absent.
+ * Theme usage: $range = hhb_get_price_range( get_the_ID() );
+ *
+ * @param int $homestay_id
+ * @return array|null ['min'=>float,'max'=>float,'formatted'=>string] or null if no rooms.
+ */
+function hhb_get_price_range( int $homestay_id ): ?array {
+    $min = get_post_meta( $homestay_id, 'hhb_price_min', true );
+    $max = get_post_meta( $homestay_id, 'hhb_price_max', true );
+
+    // Live fallback: calculate from child rooms if meta not cached yet.
+    if ( $min === '' || $max === '' ) {
+        $rooms = get_posts( array(
+            'post_type'      => 'hhb_room',
+            'post_parent'    => $homestay_id,
+            'posts_per_page' => -1,
+            'post_status'    => 'publish',
+            'fields'         => 'ids',
+        ) );
+
+        if ( empty( $rooms ) ) {
+            return null;
+        }
+
+        $prices = array();
+        foreach ( $rooms as $room_id ) {
+            $price = (float) get_post_meta( $room_id, 'room_base_price', true );
+            if ( $price > 0 ) {
+                $prices[] = $price;
+            }
+        }
+
+        if ( empty( $prices ) ) {
+            return null;
+        }
+
+        $min = min( $prices );
+        $max = max( $prices );
+
+        // Cache for next request.
+        update_post_meta( $homestay_id, 'hhb_price_min', $min );
+        update_post_meta( $homestay_id, 'hhb_price_max', $max );
+    }
+
+    $min = (float) $min;
+    $max = (float) $max;
+
+    $formatted = $min === $max
+        ? '₹' . number_format( $min, 0 )
+        : '₹' . number_format( $min, 0 ) . ' – ₹' . number_format( $max, 0 );
+
+    return array(
+        'min'       => $min,
+        'max'       => $max,
+        'formatted' => $formatted,
+    );
+}

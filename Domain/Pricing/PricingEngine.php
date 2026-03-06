@@ -2,8 +2,8 @@
 /**
  * Pricing Engine
  *
- * Calculates booking prices day-by-day, applying seasonal rates, weekend
- * multipliers, extra guest fees, and extra services. This is the financial
+ * Calculates booking prices day-by-day at the Room level, applying seasonal rates, 
+ * weekend multipliers, extra guest fees, and extra services. This is the financial
  * core of the entire booking system.
  *
  * @package Himalayan\Homestay\Domain\Pricing
@@ -16,26 +16,35 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 class PricingEngine {
 
     /**
-     * Calculate the total price for a stay, applying all pricing rules.
+     * Calculate the total price for a stay, applying all pricing rules at the room level.
      *
-     * @param int    $homestay_id  The homestay post ID.
+     * @param int    $room_id      The room post ID.
      * @param string $check_in     Check-in date (Y-m-d).
      * @param string $check_out    Check-out date (Y-m-d).
      * @param int    $guests       Number of guests.
+     * @param array  $service_ids  Array of extra service IDs.
      * @param string $coupon_code  Optional coupon code.
      * @return array Detailed price breakdown.
      */
-    public function calculate_detailed_price( int $homestay_id, string $check_in, string $check_out, int $guests = 1, array $service_ids = [], string $coupon_code = '' ): array {
-        $base_price  = (float) get_post_meta( $homestay_id, 'base_price_per_night', true );
-        $offer_price = (float) get_post_meta( $homestay_id, 'offer_price_per_night', true );
-        $max_guests  = (int) get_post_meta( $homestay_id, 'max_guests', true ) ?: 2;
-        $extra_guest_fee = (float) get_post_meta( $homestay_id, 'hhb_extra_guest_fee', true );
+    public function calculate_detailed_price( int $room_id, string $check_in, string $check_out, int $guests = 1, array $service_ids = [], string $coupon_code = '' ): array {
+        
+        $homestay_id = wp_get_post_parent_id( $room_id );
+        if ( ! $homestay_id ) {
+            $homestay_id = (int) get_post_meta( $room_id, '_hhb_homestay_id', true );
+        }
 
-        // Use offer price as base if available.
-        $effective_base = ( $offer_price > 0 && $offer_price < $base_price ) ? $offer_price : $base_price;
+        if ( ! $homestay_id ) {
+            return [ 'total' => 0, 'nights' => 0, 'breakdown' => [], 'error' => 'Invalid Room: No parent homestay found.' ];
+        }
 
-        if ( $effective_base <= 0 ) {
-            return [ 'total' => 0, 'nights' => 0, 'breakdown' => [], 'error' => 'No base price set.' ];
+        // Room-level pricing
+        $base_price      = (float) get_post_meta( $room_id, 'room_base_price', true );
+        $weekend_price   = (float) get_post_meta( $room_id, 'room_weekend_price', true );
+        $max_guests      = (int) get_post_meta( $room_id, 'room_max_guests', true ) ?: 2;
+        $extra_guest_fee = (float) get_post_meta( $room_id, 'room_extra_guest_fee', true );
+
+        if ( $base_price <= 0 ) {
+            return [ 'total' => 0, 'nights' => 0, 'breakdown' => [], 'error' => 'No base price set for this room.' ];
         }
 
         $date_start = new \DateTime( $check_in );
@@ -47,7 +56,7 @@ class PricingEngine {
         }
 
         // -------------------------------------------------------------------
-        // Fetch pricing rules.
+        // Fetch pricing rules (property level rules still apply to all rooms).
         // -------------------------------------------------------------------
         global $wpdb;
         $rules_table = $wpdb->prefix . 'himalayan_pricing_rules';
@@ -59,27 +68,29 @@ class PricingEngine {
         // -------------------------------------------------------------------
         // Day-by-day calculation.
         // -------------------------------------------------------------------
-        $breakdown    = [];
+        $breakdown     = [];
         $nightly_total = 0;
-        $current_date = clone $date_start;
+        $current_date  = clone $date_start;
 
         for ( $i = 0; $i < $nights; $i++ ) {
-            $date_str   = $current_date->format( 'Y-m-d' );
+            $date_str    = $current_date->format( 'Y-m-d' );
             $day_of_week = (int) $current_date->format( 'N' ); // 1=Mon, 7=Sun
-            $night_price = $effective_base;
-            $rule_applied = 'base';
+            
+            // Check for Room-level weekend price (Friday/Saturday)
+            $is_weekend  = in_array( $day_of_week, [5, 6], true );
+            $night_price = ( $is_weekend && $weekend_price > 0 ) ? $weekend_price : $base_price;
+            $rule_applied = ( $is_weekend && $weekend_price > 0 ) ? 'room:weekend_override' : 'room:base';
 
+            // Apply advanced property rules
             foreach ( $rules as $rule ) {
                 $applies = false;
 
                 if ( 'weekend' === $rule->rule_type ) {
-                    // Weekend: default Fri(5), Sat(6) or custom days_of_week.
                     $weekend_days = ! empty( $rule->days_of_week )
                         ? array_map( 'intval', explode( ',', $rule->days_of_week ) )
                         : [ 5, 6 ];
                     $applies = in_array( $day_of_week, $weekend_days, true );
                 } elseif ( 'seasonal' === $rule->rule_type ) {
-                    // Seasonal: date must fall within range.
                     if ( $rule->start_date && $rule->end_date ) {
                         $applies = ( $date_str >= $rule->start_date && $date_str <= $rule->end_date );
                     }
@@ -102,6 +113,18 @@ class PricingEngine {
                         break; // Non-stackable = stop after first match.
                     }
                 }
+            }
+
+            // Let's also check himalayan_room_availability for day-specific price overrides
+            // (Assuming price_override applies on top of everything if not null)
+            $avail_table = $wpdb->prefix . 'himalayan_room_availability';
+            $override_val = $wpdb->get_var( $wpdb->prepare(
+                "SELECT price_override FROM {$avail_table} WHERE room_id = %d AND date = %s",
+                $room_id, $date_str
+            ) );
+            if ( $override_val !== null ) {
+                $night_price = (float) $override_val;
+                $rule_applied = 'room:specific_date_override';
             }
 
             $breakdown[] = [
@@ -156,7 +179,7 @@ class PricingEngine {
         }
 
         // -------------------------------------------------------------------
-        // Coupon discount.
+        // Grand Total & Coupon discount.
         // -------------------------------------------------------------------
         $grand_total   = round( $nightly_total + $extra_guest_charge + $services_total, 2 );
         $coupon_amount = 0;
@@ -212,8 +235,10 @@ class PricingEngine {
         $balance_due     = round( $grand_total - $deposit_amount, 2 );
 
         return [
+            'homestay_id'        => $homestay_id,
+            'room_id'            => $room_id,
             'nights'             => $nights,
-            'base_per_night'     => $effective_base,
+            'base_per_night'     => $base_price,
             'nightly_total'      => round( $nightly_total, 2 ),
             'extra_guest_charge' => round( $extra_guest_charge, 2 ),
             'services_total'     => round( $services_total, 2 ),
@@ -225,15 +250,15 @@ class PricingEngine {
             'deposit_percent'    => $deposit_percent,
             'balance_due'        => $balance_due,
             'breakdown'          => $breakdown,
-            'currency'           => get_post_meta( $homestay_id, 'currency', true ) ?: 'INR',
+            'currency'           => 'INR', // Forced INR as requested
         ];
     }
 
     /**
-     * Simplified total-only calculation (backwards compatible).
+     * Simplified total-only calculation (backwards compatible but requires room_id now).
      */
-    public function calculate_price( $homestay_id, $check_in, $check_out, $guests = 1 ): float {
-        $result = $this->calculate_detailed_price( (int) $homestay_id, $check_in, $check_out, (int) $guests );
+    public function calculate_price( int $room_id, string $check_in, string $check_out, int $guests = 1 ): float {
+        $result = $this->calculate_detailed_price( $room_id, $check_in, $check_out, $guests );
         return $result['grand_total'] ?? 0;
     }
 }

@@ -52,6 +52,29 @@ class PostTypes {
             'capability_type'       => 'post',
         );
         register_post_type( 'hhb_host_app', $host_args );
+
+        // Register Room CPT
+        $room_labels = array(
+            'name'                  => _x( 'Rooms', 'Post Type General Name', 'himalayan-homestay-bookings' ),
+            'singular_name'         => _x( 'Room', 'Post Type Singular Name', 'himalayan-homestay-bookings' ),
+            'menu_name'             => __( 'Rooms', 'himalayan-homestay-bookings' ),
+            'all_items'             => __( 'All Rooms', 'himalayan-homestay-bookings' ),
+            'add_new_item'          => __( 'Add New Room', 'himalayan-homestay-bookings' ),
+            'add_new'               => __( 'Add New', 'himalayan-homestay-bookings' ),
+            'edit_item'             => __( 'Edit Room', 'himalayan-homestay-bookings' ),
+        );
+        $room_args = array(
+            'label'                 => __( 'Room', 'himalayan-homestay-bookings' ),
+            'labels'                => $room_labels,
+            'supports'              => array( 'title', 'custom-fields' ),
+            'public'                => false,
+            'show_ui'               => false, // Managed inside the Homestay edit screen
+            'show_in_menu'          => false, // No standalone "All Rooms" menu
+            'has_archive'           => false,
+            'show_in_rest'          => false,
+            'capability_type'       => 'post',
+        );
+        register_post_type( 'hhb_room', $room_args );
     }
 }
 

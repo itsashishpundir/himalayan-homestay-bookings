@@ -130,12 +130,26 @@ class ConfirmationPage {
 			$amount_due      = (float) ( $booking['deposit_amount'] > 0 ? $booking['deposit_amount'] : $booking['total_price'] );
 			$amount_in_paise = round( $amount_due * 100 );
             $settings        = get_option( 'hhb_payment_settings', [] );
-            $currency        = get_post_meta( $booking['homestay_id'], 'currency', true ) ?: 'INR';
+            $currency        = 'INR';
             // PayPal does not support INR. Convert to USD for PayPal processing.
             // The guest's invoice still shows INR; PayPal charges the USD equivalent.
-            $inr_to_usd_rate    = 0.012; // approximate: 1 INR ≈ 0.012 USD
-            $paypal_currency    = 'USD';
-            $paypal_amount_usd  = round( $amount_due * $inr_to_usd_rate, 2 );
+            // Rate is fetched from frankfurter.app (ECB data, free, no API key) and cached 6 hours.
+            $inr_to_usd_rate = get_transient( 'hhb_inr_usd_rate' );
+            if ( false === $inr_to_usd_rate ) {
+                $fx_response = wp_remote_get( 'https://api.frankfurter.app/latest?from=INR&to=USD', [
+                    'timeout'    => 5,
+                    'user-agent' => 'HimalayanHomestay/1.0',
+                ] );
+                if ( ! is_wp_error( $fx_response ) && 200 === wp_remote_retrieve_response_code( $fx_response ) ) {
+                    $fx_body         = json_decode( wp_remote_retrieve_body( $fx_response ), true );
+                    $inr_to_usd_rate = isset( $fx_body['rates']['USD'] ) ? (float) $fx_body['rates']['USD'] : 0.012;
+                } else {
+                    $inr_to_usd_rate = 0.012; // fallback if API is unreachable
+                }
+                set_transient( 'hhb_inr_usd_rate', $inr_to_usd_rate, 6 * HOUR_IN_SECONDS );
+            }
+            $paypal_currency   = 'USD';
+            $paypal_amount_usd = round( $amount_due * $inr_to_usd_rate, 2 );
             if ( $paypal_amount_usd < 0.01 ) { $paypal_amount_usd = 0.01; } // PayPal minimum
 
 			$header_bg   = 'linear-gradient(135deg,#e65100,#ff8f00)';

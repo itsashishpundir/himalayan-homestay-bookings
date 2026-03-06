@@ -113,7 +113,7 @@ class HostController {
         $booked_nights_query = $wpdb->get_results( $wpdb->prepare(
             "SELECT check_in, check_out FROM {$bookings_table} WHERE homestay_id IN ({$homestay_in}) AND status = 'confirmed' AND check_in <= DATE_ADD(%s, INTERVAL 30 DAY) AND check_out >= %s",
             current_time( 'Y-m-d' ), current_time( 'Y-m-d' )
-        ) );
+        ) ) ?: [];
 
         $booked_days = 0;
         foreach ( $booked_nights_query as $b ) {
@@ -125,18 +125,19 @@ class HostController {
         $occupancy_rate = $total_possible_nights > 0 ? min( 100, round( ( $booked_days / $total_possible_nights ) * 100 ) ) : 0;
 
         // 4. Currency
-        $currency = get_post_meta( $homestay_ids[0], 'currency', true ) ?: 'INR';
+        $currency = 'INR';
         $currency_symbols = [ 'USD' => '$', 'INR' => '₹', 'EUR' => '€', 'GBP' => '£', 'NPR' => 'रु' ];
         $sym = $currency_symbols[ strtoupper($currency) ] ?? $currency;
 
         // 5. Recent Bookings (Pre-processed JSON layout)
-        $recent_bookings_raw = $wpdb->get_results( $wpdb->prepare(
-            "SELECT b.*, p.post_title as property_name 
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- no user input; $homestay_in is built from intval'd post IDs
+        $recent_bookings_raw = $wpdb->get_results(
+            "SELECT b.*, p.post_title as property_name
              FROM {$bookings_table} b
              LEFT JOIN {$wpdb->posts} p ON b.homestay_id = p.ID
              WHERE b.homestay_id IN ({$homestay_in})
              ORDER BY b.created_at DESC LIMIT 5"
-        ) );
+        ) ?: [];
 
         $recent_bookings = [];
         foreach ( $recent_bookings_raw as $b ) {
@@ -311,7 +312,7 @@ class HostController {
             ...$homestay_ids
         ) );
 
-        $currency = get_post_meta( $homestay_ids[0], 'currency', true ) ?: 'INR';
+        $currency = 'INR';
         $currency_symbols = [ 'USD' => '$', 'INR' => '₹', 'EUR' => '€', 'GBP' => '£', 'NPR' => 'रु' ];
         $sym = $currency_symbols[ strtoupper($currency) ] ?? $currency;
 
@@ -374,7 +375,7 @@ class HostController {
              $per_page, $offset
         ) );
 
-        $currency = get_post_meta( $homestay_ids[0], 'currency', true ) ?: 'INR';
+        $currency = 'INR';
         $currency_symbols = [ 'USD' => '$', 'INR' => '₹', 'EUR' => '€', 'GBP' => '£', 'NPR' => 'रु' ];
         $sym = $currency_symbols[ strtoupper($currency) ] ?? $currency;
 

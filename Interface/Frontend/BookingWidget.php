@@ -27,14 +27,10 @@ class BookingWidget {
 
     public static function render_widget( $atts ): string {
         $homestay_id = get_the_ID();
-        $base_price  = get_post_meta( $homestay_id, 'base_price_per_night', true );
-        $offer_price = get_post_meta( $homestay_id, 'offer_price_per_night', true );
-        $currency    = get_post_meta( $homestay_id, 'currency', true ) ?: 'INR';
-        $max_guests  = get_post_meta( $homestay_id, 'max_guests', true ) ?: 6;
+        $currency    = 'INR';
         $min_nights  = get_post_meta( $homestay_id, 'hhb_min_nights', true ) ?: 1;
         $deposit_pct = get_post_meta( $homestay_id, 'hhb_deposit_percent', true ) ?: 0;
-        $extra_guest_fee = get_post_meta( $homestay_id, 'hhb_extra_guest_fee', true ) ?: 0;
-        $extra_guest_threshold = get_post_meta( $homestay_id, 'hhb_extra_guest_threshold', true ) ?: 2;
+        
         // Currency symbol and unit for display
         $currency_symbols = [ 'USD' => '$', 'INR' => '₹', 'EUR' => '€', 'GBP' => '£', 'NPR' => 'रु' ];
         $currency_symbol  = isset( $currency_symbols[ strtoupper($currency) ] ) ? $currency_symbols[ strtoupper($currency) ] : $currency;
@@ -43,7 +39,6 @@ class BookingWidget {
         // Fetch post author data for host profile (Phase 12 addition)
         $post_author_id = get_post_field( 'post_author', $homestay_id );
         
-        // Prioritize explicitly set meta fields, fallback to User Profile
         $host_name   = get_post_meta( $homestay_id, 'hhb_host_name', true ) ?: get_the_author_meta( 'display_name', $post_author_id );
         $host_email  = get_post_meta( $homestay_id, 'hhb_host_email', true ) ?: get_the_author_meta( 'user_email', $post_author_id );
         
@@ -54,7 +49,7 @@ class BookingWidget {
         $host_avatar = get_post_meta( $homestay_id, 'hhb_host_avatar_url', true );
         if ( empty( $host_avatar ) ) $host_avatar = get_avatar_url( $post_author_id, [ 'size' => 96 ] );
 
-        // Fetch extra services for this homestay.
+        // Fetch extra services
         global $wpdb;
         $services_table = $wpdb->prefix . 'himalayan_extra_services';
         $services = $wpdb->get_results( $wpdb->prepare(
@@ -62,15 +57,34 @@ class BookingWidget {
             $homestay_id
         ) );
 
-        // Fetch blocked dates (bookings that are pending, approved, or confirmed).
+        // Fetch Rooms mapping
+        $rooms = get_children( [
+            'post_parent' => $homestay_id,
+            'post_type'   => 'hhb_room',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+        ] );
+
+        $rooms_data = [];
+        foreach($rooms as $r) {
+             $rooms_data[] = [
+                  'id'         => $r->ID,
+                  'name'       => $r->post_title,
+                  'base_price' => (float) get_post_meta($r->ID, 'room_base_price', true),
+                  'max_guests' => (int) get_post_meta($r->ID, 'room_max_guests', true) ?: 2,
+                  'quantity'   => (int) get_post_meta($r->ID, 'room_quantity', true) ?: 1,
+             ];
+        }
+
+        // Fetch aggregate blocked dates for Homestay (Fallback logic for date picker)
+        // A more advanced integration later would use the /check-availability endpoint on room change.
         $bookings_table = $wpdb->prefix . 'himalayan_bookings';
         $bookings = $wpdb->get_results( $wpdb->prepare(
             "SELECT check_in, check_out FROM {$bookings_table} 
             WHERE homestay_id = %d 
             AND status IN ('pending', 'approved', 'confirmed')
             AND (payment_expires_at IS NULL OR payment_expires_at > %s)",
-            $homestay_id,
-            current_time( 'mysql', 1 )
+            $homestay_id, current_time( 'mysql', 1 )
         ) );
 
         $booked_dates = [];
@@ -78,29 +92,22 @@ class BookingWidget {
             $period = new \DatePeriod(
                 new \DateTime( $b->check_in ),
                 new \DateInterval( 'P1D' ),
-                new \DateTime( $b->check_out ) // Excludes check_out natively, allowing check-in on the same day someone checks out.
+                new \DateTime( $b->check_out )
             );
             foreach ( $period as $date ) {
                 $booked_dates[] = $date->format( 'Y-m-d' );
             }
         }
-        $booked_dates = array_unique( $booked_dates );
-        sort( $booked_dates );
-        $booked_dates_json = wp_json_encode( array_values( $booked_dates ) );
+        $booked_dates_json = wp_json_encode( array_values( array_unique( $booked_dates ) ) );
 
 
         ob_start();
         ?>
         <div class="hhb-booking-widget"
              data-id="<?php echo esc_attr( $homestay_id ); ?>"
-             data-price="<?php echo esc_attr( $base_price ); ?>"
-             data-offer-price="<?php echo esc_attr( $offer_price ); ?>"
              data-currency="<?php echo esc_attr( $currency ); ?>"
              data-min-nights="<?php echo esc_attr( $min_nights ); ?>"
              data-deposit-pct="<?php echo esc_attr( $deposit_pct ); ?>"
-             data-max-guests="<?php echo esc_attr( $max_guests ); ?>"
-             data-extra-guest-fee="<?php echo esc_attr( $extra_guest_fee ); ?>"
-             data-extra-guest-threshold="<?php echo esc_attr( $extra_guest_threshold ); ?>"
              data-currency-symbol="<?php echo esc_attr( $currency_symbol ); ?>"
              data-currency-unit="<?php echo esc_attr( $currency_unit ); ?>"
              data-homestay-name="<?php echo esc_attr( get_the_title( $homestay_id ) ); ?>"
@@ -114,6 +121,20 @@ class BookingWidget {
              data-nonce="<?php echo esc_attr( wp_create_nonce( 'hhb_booking_nonce' ) ); ?>">
 
             <form id="hhb-booking-form">
+                
+                <!-- Room Selection -->
+                <div class="hhb-field">
+                    <label><?php esc_html_e( 'Select Option', 'himalayan-homestay-bookings' ); ?></label>
+                    <select id="hhb-room-select" required>
+                        <option value=""><?php esc_html_e( '-- Choose a Room --', 'himalayan-homestay-bookings' ); ?></option>
+                        <?php foreach($rooms_data as $rd): ?>
+                            <option value="<?php echo esc_attr($rd['id']); ?>" data-guests="<?php echo esc_attr($rd['max_guests']); ?>" data-price="<?php echo esc_attr($rd['base_price']); ?>">
+                                <?php echo esc_html($rd['name']) . ' (' . $currency_symbol . ' ' . $rd['base_price'] . ')'; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
                 <!-- Date Fields -->
                 <div class="hhb-dates">
                     <div class="hhb-field">
@@ -126,14 +147,15 @@ class BookingWidget {
                     </div>
                 </div>
 
-                <!-- Guests -->
-                <div class="hhb-field">
-                    <label><?php esc_html_e( 'Guests', 'himalayan-homestay-bookings' ); ?></label>
-                    <select id="hhb-guests">
-                        <?php for ( $i = 1; $i <= $max_guests; $i++ ) : ?>
-                            <option value="<?php echo $i; ?>"><?php echo $i; ?> <?php echo $i === 1 ? 'Guest' : 'Guests'; ?></option>
-                        <?php endfor; ?>
-                    </select>
+                <!-- Guests & Quantities -->
+                <div class="hhb-dates">
+                    <div class="hhb-field">
+                        <label><?php esc_html_e( 'Guests', 'himalayan-homestay-bookings' ); ?></label>
+                        <select id="hhb-guests">
+                            <option value="1">1 Guest</option>
+                        </select>
+                    </div>
+                    <!-- (Optional) Room Quantity field if multiple quantities supported per booking -->
                 </div>
 
                 <!-- Extra Services -->
@@ -219,8 +241,6 @@ class BookingWidget {
 
                 <button type="button" id="hhb-check-btn" class="hhb-btn"><?php esc_html_e( 'Check Availability', 'himalayan-homestay-bookings' ); ?></button>
                 <button type="submit" id="hhb-book-btn" class="hhb-btn" style="display:none"><?php esc_html_e( 'Request to Book', 'himalayan-homestay-bookings' ); ?></button>
-            </form>
-        </div>
 
                 <!-- Payment Mode Selection -->
                 <div class="hhb-payment-mode-section" id="hhb-payment-mode-section" style="display:none; margin-top:20px; border-top:1px solid rgba(0,0,0,0.08); padding-top:20px;">
@@ -260,12 +280,8 @@ class BookingWidget {
 
                     </div>
                 </div>
-
-                <style>
-                    .hhb-payment-option:hover { border-color: #f45c25 !important; background: rgba(244,92,37,0.02) !important; }
-                    .hhb-payment-option input:checked + div span:first-child { color: #f45c25; }
-                    .hhb-payment-option input:checked { border-color: #f45c25 !important; }
-                </style>
+            </form>
+        </div>
 
         <style>
             .hhb-booking-widget { background: transparent !important; padding: 0 !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -297,8 +313,11 @@ class BookingWidget {
             .hhb-deposit-line { color: #2e7d32; }
             .hhb-deposit-line .hhb-line-value { color: #2e7d32; }
 
-            /* Customer details */
+            /* Customer details & Payments */
             .hhb-customer-details { margin-top: 16px; border-top: 1px solid rgba(0,0,0,0.08); padding-top: 16px; }
+            .hhb-payment-option:hover { border-color: #f45c25 !important; background: rgba(244,92,37,0.02) !important; }
+            .hhb-payment-option input:checked + div span:first-child { color: #f45c25; }
+            .hhb-payment-option input:checked { border-color: #f45c25 !important; }
 
             /* Buttons */
             .hhb-btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #f45c25, #e04010); color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 20px rgba(244,92,37,0.3); letter-spacing: 0.3px; }
@@ -323,17 +342,6 @@ class BookingWidget {
             .hhb-success-text { font-size:15px; color:#555; line-height:1.6; margin:0 0 30px; }
             .hhb-success-btn { display:inline-block; background:#111; color:#fff !important; text-decoration:none; padding:12px 30px; border-radius:30px; font-weight:600; font-size:15px; transition:all 0.2s; }
             .hhb-success-btn:hover { background:#000; transform:translateY(-1px); box-shadow:0 6px 20px rgba(0,0,0,0.15); }
-            
-            /* Host Card */
-            .hhb-host-card { margin-top: 24px; background: #fff; padding: 20px; border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
-            .hhb-host-title { margin: 0 0 16px; font-size: 16px; font-weight: 700; color: #111; }
-            .hhb-host-profile { display: flex; align-items: center; gap: 16px; }
-            .hhb-host-avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid #f45c25; }
-            .hhb-host-info { flex: 1; }
-            .hhb-host-name { font-size: 16px; font-weight: 600; color: #333; margin-bottom: 4px; }
-            .hhb-host-contact { font-size: 13px; margin-bottom: 4px; }
-            .hhb-host-contact a { color: #666; text-decoration: none; display: flex; align-items: center; gap: 6px; transition: color 0.2s; }
-            .hhb-host-contact a:hover { color: #f45c25; }
         </style>
 
         <script>
@@ -344,13 +352,11 @@ class BookingWidget {
             if (!widget) return;
 
             const homestayId   = widget.dataset.id;
-            const fakeGateway  = <?php 
-                $opts = get_option( \Himalayan\Homestay\Interface\Admin\SettingsPage::OPTION_KEY, [] );
-                echo !empty($opts['fake_gateway_enabled']) && $opts['fake_gateway_enabled'] === 'yes' ? 'true' : 'false';
-            ?>;
-            const paypalGateway  = <?php echo !empty($opts['paypal_enabled']) && $opts['paypal_enabled'] === 'yes' ? 'true' : 'false'; ?>;
-            const razorpayGateway  = <?php echo !empty($opts['razorpay_enabled']) && $opts['razorpay_enabled'] === 'yes' ? 'true' : 'false'; ?>;
             const minNights    = parseInt(widget.dataset.minNights) || 1;
+            
+            const roomSelect   = document.getElementById("hhb-room-select");
+            const guestSelect  = document.getElementById("hhb-guests");
+
             const checkInEl    = document.getElementById("hhb-check-in");
             const checkOutEl   = document.getElementById("hhb-check-out");
             const checkBtn     = document.getElementById("hhb-check-btn");
@@ -360,6 +366,25 @@ class BookingWidget {
             const messages     = document.getElementById("hhb-messages");
             const paymentModeSection = document.getElementById("hhb-payment-mode-section");
             const bookedDates = JSON.parse(widget.dataset.bookedDates || "[]");
+
+            roomSelect.addEventListener('change', (e) => {
+                const opt = e.target.options[e.target.selectedIndex];
+                const mg = parseInt(opt.dataset.guests) || 1;
+                guestSelect.innerHTML = '';
+                for(let i=1; i<=mg; i++) {
+                    guestSelect.innerHTML += `<option value="${i}">${i} ${i===1?'Guest':'Guests'}</option>`;
+                }
+
+                const newPrice = opt.dataset.price;
+                const displayPriceEl = document.getElementById('hhb-display-price-main');
+                if (displayPriceEl && newPrice) {
+                    const formattedPrice = Number(newPrice).toLocaleString('en-IN');
+                    const cSymbol = widget.dataset.currencySymbol || '';
+                    displayPriceEl.textContent = cSymbol + ' ' + formattedPrice;
+                }
+
+                resetForm();
+            });
 
             const fpIn = flatpickr(checkInEl, {
                 minDate: "today",
@@ -424,14 +449,16 @@ class BookingWidget {
 
             checkBtn.addEventListener("click", async () => {
                 const ci = checkInEl.value, co = checkOutEl.value;
+                const roomId = roomSelect.value;
+                if (!roomId) return showMsg("Please select a room.", "error");
                 if (!ci || !co) return showMsg("Please select your dates.", "error");
 
                 checkBtn.textContent = "Checking...";
                 checkBtn.disabled = true;
 
                 try {
-                    // 1. Check availability
-                    const res = await fetch("<?php echo esc_url( rest_url( 'himalayan/v1/check-availability' ) ); ?>?homestay_id=" + homestayId + "&check_in=" + ci + "&check_out=" + co);
+                    // 1. Check availability array
+                    const res = await fetch("<?php echo esc_url( rest_url( 'himalayan/v1/check-availability' ) ); ?>?room_id=" + roomId + "&check_in=" + ci + "&check_out=" + co);
                     const data = await res.json();
 
                     if (!res.ok || !data.available) {
@@ -444,7 +471,7 @@ class BookingWidget {
                     const guests     = document.getElementById("hhb-guests").value;
                     const serviceIds = getSelectedServiceIds();
                     const couponCode = document.getElementById("hhb-coupon") ? document.getElementById("hhb-coupon").value : "";
-                    let priceUrl     = "<?php echo esc_url( rest_url( 'himalayan/v1/calculate-price' ) ); ?>?homestay_id=" + homestayId + "&check_in=" + ci + "&check_out=" + co + "&guests=" + guests + "&coupon_code=" + encodeURIComponent(couponCode);
+                    let priceUrl     = "<?php echo esc_url( rest_url( 'himalayan/v1/calculate-price' ) ); ?>?room_id=" + roomId + "&check_in=" + ci + "&check_out=" + co + "&guests=" + guests + "&coupon_code=" + encodeURIComponent(couponCode);
                     serviceIds.forEach(id => priceUrl += "&services[]=" + id);
 
                     const priceRes  = await fetch(priceUrl);
@@ -488,7 +515,6 @@ class BookingWidget {
                         if (depositEl) depositEl.textContent = c + " " + priceData.deposit_amount;
                         if (balanceEl) balanceEl.textContent = c + " " + priceData.balance_due;
 
-                        // Fake gateway modal total
                         breakdownDiv.style.display = "block";
                         customerDiv.style.display = "block";
                         document.getElementById("hhb-coupon-section").style.display = "block";
@@ -507,10 +533,13 @@ class BookingWidget {
 
             document.getElementById("hhb-booking-form").addEventListener("submit", async (e) => {
                 e.preventDefault();
+                const roomId = roomSelect.value;
+                if (!roomId) return showMsg("Please select a room.", "error");
+
                 bookBtn.textContent = "Processing..."; bookBtn.disabled = true;
 
                 const payload = {
-                    homestay_id: homestayId,
+                    room_id: roomId,
                     check_in: checkInEl.value,
                     check_out: checkOutEl.value,
                     guests: document.getElementById("hhb-guests").value,
@@ -547,7 +576,6 @@ class BookingWidget {
 
                         if (res.ok && data.booking_id) {
                             if (data.mode === 'cash') {
-                                // Show Cash Success Popup directly on the screen
                                 document.body.insertAdjacentHTML('beforeend', `
                                     <div id="hhb-cash-success-modal" class="hhb-payment-modal">
                                         <div class="hhb-payment-modal-content">
@@ -560,10 +588,8 @@ class BookingWidget {
                                         </div>
                                     </div>
                                 `);
-                                // Remove hidden class to trigger animation
                                 setTimeout(() => document.getElementById('hhb-cash-success-modal').classList.remove('hhb-hidden'), 10);
                             } else {
-                                // Redirect to checkout for Gateways
                                 btn.textContent = "Redirecting to Payment...";
                                 window.location.href = "<?php echo esc_url( home_url( '/' ) ); ?>?hhb_confirmation=" + data.booking_id;
                             }

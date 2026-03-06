@@ -22,7 +22,8 @@ class HomestayMetaBoxes {
 
     public static function add_meta_boxes() {
         add_meta_box( 'hhb_homestay_gallery', __( 'Property Images (Gallery)', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_gallery_meta_box' ), 'hhb_homestay', 'normal', 'high' );
-        add_meta_box( 'hhb_homestay_details', __( 'Homestay Details & Pricing', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_details_meta_box' ), 'hhb_homestay', 'normal', 'high' );
+        add_meta_box( 'hhb_homestay_rooms', __( 'Rooms', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_rooms_meta_box' ), 'hhb_homestay', 'normal', 'high' );
+        add_meta_box( 'hhb_homestay_details', __( 'Homestay Details', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_details_meta_box' ), 'hhb_homestay', 'normal', 'high' );
         add_meta_box( 'hhb_homestay_amenities', __( 'Property Amenities', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_amenities_meta_box' ), 'hhb_homestay', 'normal', 'high' );
         add_meta_box( 'hhb_homestay_rules', __( 'House Rules (Dos & Don\'ts)', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_rules_meta_box' ), 'hhb_homestay', 'normal', 'default' );
         add_meta_box( 'hhb_homestay_attractions', __( 'Nearby Attractions', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_attractions_meta_box' ), 'hhb_homestay', 'normal', 'default' );
@@ -30,7 +31,142 @@ class HomestayMetaBoxes {
         add_meta_box( 'hhb_homestay_booking_rules', __( 'Booking Rules', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_booking_rules_meta_box' ), 'hhb_homestay', 'side', 'default' );
         add_meta_box( 'hhb_homestay_extra_services', __( 'Extra Services & Add-ons', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_extra_services_meta_box' ), 'hhb_homestay', 'normal', 'default' );
         add_meta_box( 'hhb_homestay_ical_feeds', __( 'iCal Sync (Channel Manager)', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_ical_feeds_meta_box' ), 'hhb_homestay', 'normal', 'default' );
-        add_meta_box( 'hhb_homestay_host', __( 'Host Profile (Optional overrides)', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_host_meta_box' ), 'hhb_homestay', 'side', 'default' );
+        add_meta_box( 'hhb_homestay_host', __( 'Host Profile', 'himalayan-homestay-bookings' ), array( __CLASS__, 'render_host_meta_box' ), 'hhb_homestay', 'side', 'high' );
+    }
+
+    public static function render_rooms_meta_box( $post ) {
+        wp_nonce_field( 'hhb_save_rooms', 'hhb_rooms_nonce' );
+
+        $rooms = get_posts( array(
+            'post_type'      => 'hhb_room',
+            'post_parent'    => $post->ID,
+            'posts_per_page' => -1,
+            'post_status'    => array( 'publish', 'draft' ),
+            'orderby'        => 'date',
+            'order'          => 'ASC',
+        ) );
+
+        $room_fields_html = function( $index, $data ) {
+            $f = $data;
+            ob_start();
+            ?>
+            <div class="hhb-room-row" style="border:1px solid #c3c4c7; border-radius:4px; padding:15px; margin-bottom:12px; background:#fafafa;">
+                <input type="hidden" name="hhb_rooms[<?php echo $index; ?>][id]" value="<?php echo esc_attr( $f['id'] ); ?>">
+                <input type="hidden" name="hhb_rooms[<?php echo $index; ?>][delete]" class="hhb-room-delete-flag" value="0">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <strong style="font-size:13px; color:#1d2327; margin-right:8px;">Room Name:</strong>
+                    <input type="text" name="hhb_rooms[<?php echo $index; ?>][title]" value="<?php echo esc_attr( $f['title'] ); ?>" placeholder="e.g. Deluxe Double Room" style="flex:1; font-size:13px; font-weight:600; margin-right:12px;">
+                    <button type="button" class="button hhb-remove-room" style="color:#b32d2e; border-color:#b32d2e;">&#10005; Remove</button>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px;">
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Base Price / Night (₹) *</label>
+                        <input type="number" name="hhb_rooms[<?php echo $index; ?>][base_price]" value="<?php echo esc_attr( $f['base_price'] ); ?>" step="0.01" min="0" placeholder="0.00" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Weekend Price / Night (₹)</label>
+                        <input type="number" name="hhb_rooms[<?php echo $index; ?>][weekend_price]" value="<?php echo esc_attr( $f['weekend_price'] ); ?>" step="0.01" min="0" placeholder="Optional" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Extra Guest Fee / Night (₹)</label>
+                        <input type="number" name="hhb_rooms[<?php echo $index; ?>][extra_guest_fee]" value="<?php echo esc_attr( $f['extra_guest_fee'] ); ?>" step="0.01" min="0" placeholder="0.00" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Max Guests</label>
+                        <input type="number" name="hhb_rooms[<?php echo $index; ?>][max_guests]" value="<?php echo esc_attr( $f['max_guests'] ); ?>" min="1" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Room Quantity</label>
+                        <input type="number" name="hhb_rooms[<?php echo $index; ?>][quantity]" value="<?php echo esc_attr( $f['quantity'] ); ?>" min="1" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Bed Type (e.g. 1 King)</label>
+                        <input type="text" name="hhb_rooms[<?php echo $index; ?>][bed_type]" value="<?php echo esc_attr( $f['bed_type'] ); ?>" placeholder="e.g. 1 King" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Min Nights</label>
+                        <input type="number" name="hhb_rooms[<?php echo $index; ?>][min_nights]" value="<?php echo esc_attr( $f['min_nights'] ); ?>" min="1" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Max Nights</label>
+                        <input type="number" name="hhb_rooms[<?php echo $index; ?>][max_nights]" value="<?php echo esc_attr( $f['max_nights'] ); ?>" min="1" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Room Size (sq.ft)</label>
+                        <input type="text" name="hhb_rooms[<?php echo $index; ?>][size_sqft]" value="<?php echo esc_attr( $f['size_sqft'] ); ?>" placeholder="e.g. 250" style="width:100%;">
+                    </div>
+                </div>
+            </div>
+            <?php
+            return ob_get_clean();
+        };
+        ?>
+        <div id="hhb-rooms-container">
+            <?php
+            foreach ( $rooms as $index => $room ) {
+                echo $room_fields_html( $index, array(
+                    'id'              => $room->ID,
+                    'title'           => $room->post_title,
+                    'base_price'      => get_post_meta( $room->ID, 'room_base_price', true ),
+                    'weekend_price'   => get_post_meta( $room->ID, 'room_weekend_price', true ),
+                    'extra_guest_fee' => get_post_meta( $room->ID, 'room_extra_guest_fee', true ),
+                    'max_guests'      => get_post_meta( $room->ID, 'room_max_guests', true ) ?: 2,
+                    'quantity'        => get_post_meta( $room->ID, 'room_quantity', true ) ?: 1,
+                    'min_nights'      => get_post_meta( $room->ID, 'room_min_nights', true ) ?: 1,
+                    'max_nights'      => get_post_meta( $room->ID, 'room_max_nights', true ) ?: 30,
+                    'size_sqft'       => get_post_meta( $room->ID, 'room_size_sqft', true ),
+                    'bed_type'        => get_post_meta( $room->ID, 'room_bed_type', true ),
+                ) );
+            }
+            ?>
+        </div>
+        <button type="button" class="button button-primary" id="hhb-add-room" style="margin-top:4px;">+ Add Room</button>
+
+        <script type="text/html" id="hhb-room-template">
+            <div class="hhb-room-row" style="border:1px solid #c3c4c7; border-radius:4px; padding:15px; margin-bottom:12px; background:#fafafa;">
+                <input type="hidden" name="hhb_rooms[__IDX__][id]" value="0">
+                <input type="hidden" name="hhb_rooms[__IDX__][delete]" class="hhb-room-delete-flag" value="0">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <strong style="font-size:13px; color:#1d2327; margin-right:8px;">Room Name:</strong>
+                    <input type="text" name="hhb_rooms[__IDX__][title]" value="" placeholder="e.g. Deluxe Double Room" style="flex:1; font-size:13px; font-weight:600; margin-right:12px;">
+                    <button type="button" class="button hhb-remove-room" style="color:#b32d2e; border-color:#b32d2e;">&#10005; Remove</button>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px;">
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Base Price / Night (₹) *</label><input type="number" name="hhb_rooms[__IDX__][base_price]" value="" step="0.01" min="0" placeholder="0.00" style="width:100%;"></div>
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Weekend Price / Night (₹)</label><input type="number" name="hhb_rooms[__IDX__][weekend_price]" value="" step="0.01" min="0" placeholder="Optional" style="width:100%;"></div>
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Extra Guest Fee / Night (₹)</label><input type="number" name="hhb_rooms[__IDX__][extra_guest_fee]" value="" step="0.01" min="0" placeholder="0.00" style="width:100%;"></div>
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Max Guests</label><input type="number" name="hhb_rooms[__IDX__][max_guests]" value="2" min="1" style="width:100%;"></div>
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Room Quantity</label><input type="number" name="hhb_rooms[__IDX__][quantity]" value="1" min="1" style="width:100%;"></div>
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Bed Type (e.g. 1 King)</label><input type="text" name="hhb_rooms[__IDX__][bed_type]" value="" placeholder="e.g. 1 King" style="width:100%;"></div>
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Min Nights</label><input type="number" name="hhb_rooms[__IDX__][min_nights]" value="1" min="1" style="width:100%;"></div>
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Max Nights</label><input type="number" name="hhb_rooms[__IDX__][max_nights]" value="30" min="1" style="width:100%;"></div>
+                    <div><label style="display:block; font-size:11px; font-weight:600; margin-bottom:3px;">Room Size (sq.ft)</label><input type="text" name="hhb_rooms[__IDX__][size_sqft]" value="" placeholder="e.g. 250" style="width:100%;"></div>
+                </div>
+            </div>
+        </script>
+        <script>
+        (function($) {
+            var hhbRoomIdx = <?php echo count( $rooms ); ?>;
+
+            $('#hhb-add-room').on('click', function() {
+                var html = $('#hhb-room-template').html().replace(/__IDX__/g, hhbRoomIdx);
+                $('#hhb-rooms-container').append(html);
+                hhbRoomIdx++;
+            });
+
+            $(document).on('click', '.hhb-remove-room', function() {
+                var $row = $(this).closest('.hhb-room-row');
+                var roomId = $row.find('input[name$="[id]"]').val();
+                if ( roomId && roomId !== '0' ) {
+                    $row.find('.hhb-room-delete-flag').val('1');
+                    $row.slideUp(200);
+                } else {
+                    $row.remove();
+                }
+            });
+        })(jQuery);
+        </script>
+        <?php
     }
 
     public static function render_gallery_meta_box( $post ) {
@@ -90,41 +226,199 @@ class HomestayMetaBoxes {
 
     public static function render_details_meta_box( $post ) {
         wp_nonce_field( 'hhb_save_homestay_details', 'hhb_homestay_details_nonce' );
-        $base_price    = get_post_meta( $post->ID, 'base_price_per_night', true );
-        $offer_price   = get_post_meta( $post->ID, 'offer_price_per_night', true );
-        $currency      = get_post_meta( $post->ID, 'currency', true ) ?: 'INR';
-        $max_guests    = get_post_meta( $post->ID, 'max_guests', true );
-        $owner_id      = get_post_meta( $post->ID, 'owner_id', true );
-        $lat           = get_post_meta( $post->ID, 'lat', true );
-        $lng           = get_post_meta( $post->ID, 'lng', true );
+
+        // Location
+        $address       = get_post_meta( $post->ID, 'hhb_address', true );
+        $city          = get_post_meta( $post->ID, 'hhb_city', true );
+        $state         = get_post_meta( $post->ID, 'hhb_state', true );
+        $country       = get_post_meta( $post->ID, 'hhb_country', true );
+        $postal_code   = get_post_meta( $post->ID, 'hhb_postal_code', true );
+
+        // Property Info
+        $property_type    = get_post_meta( $post->ID, 'hhb_property_type', true );
+        $total_bedrooms   = get_post_meta( $post->ID, 'hhb_total_bedrooms', true );
+        $total_bathrooms  = get_post_meta( $post->ID, 'hhb_total_bathrooms', true );
+        $max_guests       = get_post_meta( $post->ID, 'hhb_max_guests', true );
+        $property_size    = get_post_meta( $post->ID, 'hhb_property_size', true );
+        $year_established = get_post_meta( $post->ID, 'hhb_year_established', true );
+
+        // Check-in / Check-out
+        $checkin_time    = get_post_meta( $post->ID, 'hhb_checkin_time', true )  ?: '14:00';
+        $checkout_time   = get_post_meta( $post->ID, 'hhb_checkout_time', true ) ?: '11:00';
+        $early_checkin   = get_post_meta( $post->ID, 'hhb_early_checkin', true );
+        $late_checkout   = get_post_meta( $post->ID, 'hhb_late_checkout', true );
+
+        // Contact
+        $contact_phone = get_post_meta( $post->ID, 'hhb_contact_phone', true );
+        $contact_email = get_post_meta( $post->ID, 'hhb_contact_email', true );
+        $website_url   = get_post_meta( $post->ID, 'hhb_website_url', true );
+
+        $property_types = array(
+            ''            => '— Select Type —',
+            'homestay'    => 'Homestay',
+            'villa'       => 'Villa',
+            'cottage'     => 'Cottage',
+            'farmhouse'   => 'Farmhouse',
+            'guesthouse'  => 'Guesthouse',
+            'apartment'   => 'Apartment',
+            'treehouse'   => 'Treehouse',
+            'resort'      => 'Resort / Hotel',
+            'camp'        => 'Camp / Tent',
+            'other'       => 'Other',
+        );
         ?>
-        <div class="hhb-meta-container">
-            <div class="hhb-field">
-                <label>Base Price / Night</label>
-                <input type="number" name="base_price_per_night" value="<?php echo esc_attr($base_price); ?>" step="0.01">
-            </div>
-            <div class="hhb-field">
-                <label>Offer Price / Night (Discounted)</label>
-                <input type="number" name="offer_price_per_night" value="<?php echo esc_attr($offer_price); ?>" step="0.01">
-                <p class="description">Set a lower price to show a discount badge.</p>
-            </div>
-            <div class="hhb-field">
-                <label>Max Guests</label>
-                <input type="number" name="max_guests" value="<?php echo esc_attr($max_guests); ?>">
-            </div>
-            <div class="hhb-field">
-                <label>GPS Coordinates</label>
-                <div style="display:flex; gap:10px;">
-                    <input type="text" name="lat" placeholder="Latitude" value="<?php echo esc_attr($lat); ?>">
-                    <input type="text" name="lng" placeholder="Longitude" value="<?php echo esc_attr($lng); ?>">
+        <style>
+            .hhb-details-section { margin-bottom: 24px; }
+            .hhb-details-section h4 {
+                margin: 0 0 12px;
+                padding: 6px 10px;
+                background: #f0f0f1;
+                border-left: 3px solid #2271b1;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: .5px;
+                color: #1d2327;
+            }
+            .hhb-details-grid { display: grid; gap: 14px; }
+            .hhb-details-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+            .hhb-details-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+            .hhb-details-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+            .hhb-details-grid.cols-5 { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
+            .hhb-d-field label {
+                display: block;
+                font-size: 11px;
+                font-weight: 700;
+                color: #50575e;
+                margin-bottom: 4px;
+                text-transform: uppercase;
+                letter-spacing: .3px;
+            }
+            .hhb-d-field input[type="text"],
+            .hhb-d-field input[type="email"],
+            .hhb-d-field input[type="url"],
+            .hhb-d-field input[type="number"],
+            .hhb-d-field input[type="time"],
+            .hhb-d-field select { width: 100%; }
+            .hhb-d-field .description { margin-top: 3px; font-size: 11px; color: #8c8f94; }
+            .hhb-toggle-row { display: flex; gap: 20px; align-items: center; margin-top: 4px; }
+            .hhb-toggle-row label { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; cursor: pointer; }
+            .hhb-info-note { background: #e8f4fd; border-left: 3px solid #2271b1; padding: 8px 12px; font-size: 12px; color: #2271b1; margin-bottom: 18px; border-radius: 0 3px 3px 0; }
+        </style>
+
+        <p class="hhb-info-note">Room-level pricing and capacity is managed in the <strong>Rooms</strong> metabox above. Fill in property-wide details here.</p>
+
+        <!-- ── LOCATION ─────────────────────────────────────────── -->
+        <div class="hhb-details-section">
+            <h4>Location</h4>
+            <div class="hhb-details-grid cols-5">
+                <div class="hhb-d-field">
+                    <label for="hhb_address">Street Address *</label>
+                    <input type="text" id="hhb_address" name="hhb_address" value="<?php echo esc_attr( $address ); ?>" placeholder="e.g. 12 Hill View Road">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_city">City / Village *</label>
+                    <input type="text" id="hhb_city" name="hhb_city" value="<?php echo esc_attr( $city ); ?>" placeholder="e.g. Manali">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_state">State *</label>
+                    <input type="text" id="hhb_state" name="hhb_state" value="<?php echo esc_attr( $state ); ?>" placeholder="e.g. Himachal Pradesh">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_country">Country</label>
+                    <input type="text" id="hhb_country" name="hhb_country" value="<?php echo esc_attr( $country ?: 'India' ); ?>" placeholder="India">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_postal_code">PIN / Postal Code</label>
+                    <input type="text" id="hhb_postal_code" name="hhb_postal_code" value="<?php echo esc_attr( $postal_code ); ?>" placeholder="e.g. 175131">
                 </div>
             </div>
         </div>
-        <style>
-            .hhb-meta-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-            .hhb-field label { display: block; font-weight: bold; margin-bottom: 5px; }
-            .hhb-field input { width: 100%; }
-        </style>
+
+        <!-- ── PROPERTY INFO ─────────────────────────────────────── -->
+        <div class="hhb-details-section">
+            <h4>Property Info</h4>
+            <div class="hhb-details-grid cols-3">
+                <div class="hhb-d-field">
+                    <label for="hhb_property_type">Property Type *</label>
+                    <select id="hhb_property_type" name="hhb_property_type">
+                        <?php foreach ( $property_types as $val => $label ) : ?>
+                            <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $property_type, $val ); ?>>
+                                <?php echo esc_html( $label ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_total_bedrooms">Total Bedrooms</label>
+                    <input type="number" id="hhb_total_bedrooms" name="hhb_total_bedrooms" value="<?php echo esc_attr( $total_bedrooms ); ?>" min="0" placeholder="e.g. 4">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_total_bathrooms">Total Bathrooms</label>
+                    <input type="number" id="hhb_total_bathrooms" name="hhb_total_bathrooms" value="<?php echo esc_attr( $total_bathrooms ); ?>" min="0" placeholder="e.g. 2">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_max_guests">Max Guests (Property-wide)</label>
+                    <input type="number" id="hhb_max_guests" name="hhb_max_guests" value="<?php echo esc_attr( $max_guests ); ?>" min="1" placeholder="e.g. 10">
+                    <p class="description">Total across all rooms.</p>
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_property_size">Property Size (sq.ft)</label>
+                    <input type="number" id="hhb_property_size" name="hhb_property_size" value="<?php echo esc_attr( $property_size ); ?>" min="0" placeholder="e.g. 2500">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_year_established">Year Established</label>
+                    <input type="number" id="hhb_year_established" name="hhb_year_established" value="<?php echo esc_attr( $year_established ); ?>" min="1900" max="<?php echo date('Y'); ?>" placeholder="e.g. 2015">
+                </div>
+            </div>
+        </div>
+
+        <!-- ── CHECK-IN / CHECK-OUT ──────────────────────────────── -->
+        <div class="hhb-details-section">
+            <h4>Check-in &amp; Check-out Policy</h4>
+            <div class="hhb-details-grid cols-4">
+                <div class="hhb-d-field">
+                    <label for="hhb_checkin_time">Check-in Time</label>
+                    <input type="time" id="hhb_checkin_time" name="hhb_checkin_time" value="<?php echo esc_attr( $checkin_time ); ?>">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_checkout_time">Check-out Time</label>
+                    <input type="time" id="hhb_checkout_time" name="hhb_checkout_time" value="<?php echo esc_attr( $checkout_time ); ?>">
+                </div>
+                <div class="hhb-d-field">
+                    <label>Early Check-in Available?</label>
+                    <div class="hhb-toggle-row">
+                        <label><input type="radio" name="hhb_early_checkin" value="yes" <?php checked( $early_checkin, 'yes' ); ?>> Yes</label>
+                        <label><input type="radio" name="hhb_early_checkin" value="no"  <?php checked( $early_checkin, 'no' ); ?>>  No</label>
+                    </div>
+                </div>
+                <div class="hhb-d-field">
+                    <label>Late Check-out Available?</label>
+                    <div class="hhb-toggle-row">
+                        <label><input type="radio" name="hhb_late_checkout" value="yes" <?php checked( $late_checkout, 'yes' ); ?>> Yes</label>
+                        <label><input type="radio" name="hhb_late_checkout" value="no"  <?php checked( $late_checkout, 'no' ); ?>>  No</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── CONTACT ──────────────────────────────────────────── -->
+        <div class="hhb-details-section">
+            <h4>Contact &amp; Links</h4>
+            <div class="hhb-details-grid cols-3">
+                <div class="hhb-d-field">
+                    <label for="hhb_contact_phone">Contact Phone</label>
+                    <input type="text" id="hhb_contact_phone" name="hhb_contact_phone" value="<?php echo esc_attr( $contact_phone ); ?>" placeholder="e.g. +91 98765 43210">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_contact_email">Contact Email</label>
+                    <input type="email" id="hhb_contact_email" name="hhb_contact_email" value="<?php echo esc_attr( $contact_email ); ?>" placeholder="e.g. host@example.com">
+                </div>
+                <div class="hhb-d-field">
+                    <label for="hhb_website_url">Website / Social Link</label>
+                    <input type="url" id="hhb_website_url" name="hhb_website_url" value="<?php echo esc_attr( $website_url ); ?>" placeholder="https://...">
+                </div>
+            </div>
+        </div>
         <?php
     }
 
@@ -337,30 +631,15 @@ class HomestayMetaBoxes {
      * Booking Rules Meta Box — min/max nights, buffer time, deposit.
      */
     public static function render_booking_rules_meta_box( $post ) {
-        $min_nights       = get_post_meta( $post->ID, 'hhb_min_nights', true ) ?: 1;
-        $max_nights       = get_post_meta( $post->ID, 'hhb_max_nights', true ) ?: 30;
-        $buffer_days      = get_post_meta( $post->ID, 'hhb_buffer_days', true ) ?: 0;
-        $deposit_percent  = get_post_meta( $post->ID, 'hhb_deposit_percent', true ) ?: 0;
-        $extra_guest_fee  = get_post_meta( $post->ID, 'hhb_extra_guest_fee', true ) ?: 0;
+        wp_nonce_field( 'hhb_save_homestay_booking_rules', 'hhb_homestay_booking_rules_nonce' );
+        $buffer_days     = get_post_meta( $post->ID, 'hhb_buffer_days', true );
+        $deposit_percent = get_post_meta( $post->ID, 'hhb_deposit_percent', true );
         ?>
-        <div style="display:flex; flex-direction:column; gap:12px;">
-            <div>
-                <label style="display:block;font-weight:600;font-size:12px;margin-bottom:3px">Minimum Nights</label>
-                <input type="number" name="hhb_min_nights" value="<?php echo esc_attr($min_nights); ?>" min="1" style="width:100%">
-            </div>
-            <div>
-                <label style="display:block;font-weight:600;font-size:12px;margin-bottom:3px">Maximum Nights</label>
-                <input type="number" name="hhb_max_nights" value="<?php echo esc_attr($max_nights); ?>" min="1" style="width:100%">
-            </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top:10px;">
             <div>
                 <label style="display:block;font-weight:600;font-size:12px;margin-bottom:3px">Buffer Days (between bookings)</label>
                 <input type="number" name="hhb_buffer_days" value="<?php echo esc_attr($buffer_days); ?>" min="0" style="width:100%">
-                <p class="description">Days blocked after checkout for cleaning/turnaround.</p>
-            </div>
-            <div>
-                <label style="display:block;font-weight:600;font-size:12px;margin-bottom:3px">Extra Guest Fee (per night)</label>
-                <input type="number" name="hhb_extra_guest_fee" value="<?php echo esc_attr($extra_guest_fee); ?>" step="0.01" min="0" style="width:100%">
-                <p class="description">Charged per guest beyond the max included.</p>
+                <p class="description">Days blocked after checkout for cleaning/turnaround across all rooms.</p>
             </div>
             <div>
                 <label style="display:block;font-weight:600;font-size:12px;margin-bottom:3px">Deposit % (0 = full payment)</label>
@@ -513,13 +792,41 @@ class HomestayMetaBoxes {
             update_post_meta( $post_id, 'hhb_gallery', sanitize_text_field( $_POST['hhb_gallery'] ) );
         }
 
-        // Save Basic Meta
-        $meta_fields = array(
-            'base_price_per_night', 'offer_price_per_night', 'max_guests', 'lat', 'lng', 
-            'hhb_dos', 'hhb_donts'
+        // ── Save Location ─────────────────────────────────────────────────────────
+        $text_fields = array(
+            'hhb_address', 'hhb_city', 'hhb_state', 'hhb_country', 'hhb_postal_code',
+            'hhb_property_type', 'hhb_contact_phone', 'hhb_contact_email',
+            'hhb_checkin_time', 'hhb_checkout_time',
+            'hhb_early_checkin', 'hhb_late_checkout',
         );
-        foreach ( $meta_fields as $field ) {
-            if ( isset( $_POST[$field] ) ) update_post_meta( $post_id, $field, sanitize_textarea_field($_POST[$field]) );
+        foreach ( $text_fields as $field ) {
+            if ( isset( $_POST[ $field ] ) ) {
+                update_post_meta( $post_id, $field, sanitize_text_field( wp_unslash( $_POST[ $field ] ) ) );
+            }
+        }
+
+        // URL field
+        if ( isset( $_POST['hhb_website_url'] ) ) {
+            update_post_meta( $post_id, 'hhb_website_url', esc_url_raw( wp_unslash( $_POST['hhb_website_url'] ) ) );
+        }
+
+        // Numeric fields
+        $numeric_fields = array(
+            'hhb_total_bedrooms', 'hhb_total_bathrooms', 'hhb_max_guests',
+            'hhb_property_size', 'hhb_year_established',
+        );
+        foreach ( $numeric_fields as $field ) {
+            if ( isset( $_POST[ $field ] ) ) {
+                update_post_meta( $post_id, $field, absint( $_POST[ $field ] ) );
+            }
+        }
+
+        // ── Save House Rules (textarea) ────────────────────────────────────────
+        $textarea_fields = array( 'hhb_dos', 'hhb_donts' );
+        foreach ( $textarea_fields as $field ) {
+            if ( isset( $_POST[ $field ] ) ) {
+                update_post_meta( $post_id, $field, sanitize_textarea_field( wp_unslash( $_POST[ $field ] ) ) );
+            }
         }
 
         // Save Attractions
@@ -537,23 +844,40 @@ class HomestayMetaBoxes {
         }
 
         // Save Booking Rules
-        $booking_fields = [ 'hhb_min_nights', 'hhb_max_nights', 'hhb_buffer_days', 'hhb_deposit_percent', 'hhb_extra_guest_fee' ];
+        $booking_fields = [ 'hhb_buffer_days', 'hhb_deposit_percent' ];
         foreach ( $booking_fields as $f ) {
             if ( isset( $_POST[$f] ) ) {
                 update_post_meta( $post_id, $f, sanitize_text_field( $_POST[$f] ) );
             }
         }
 
-        // Save Host Profile Details
-        $host_fields = [ 'hhb_host_mode', 'hhb_host_name', 'hhb_host_email', 'hhb_host_phone', 'hhb_host_avatar_url', 'hhb_host_bio' ];
-        foreach ( $host_fields as $f ) {
-            if ( isset( $_POST[$f] ) ) {
-                update_post_meta( $post_id, $f, sanitize_text_field( $_POST[$f] ) );
+        // ── Save Host Profile ──────────────────────────────────────────────────
+        if ( isset( $_POST['hhb_host_nonce'] ) && wp_verify_nonce( $_POST['hhb_host_nonce'], 'hhb_save_host_profile' ) ) {
+            $host_mode = sanitize_text_field( wp_unslash( $_POST['hhb_host_mode'] ?? 'user' ) );
+            $host_mode = in_array( $host_mode, array( 'user', 'manual' ), true ) ? $host_mode : 'user';
+            update_post_meta( $post_id, 'hhb_host_mode', $host_mode );
+
+            if ( 'user' === $host_mode ) {
+                update_post_meta( $post_id, 'hhb_host_user_id', absint( $_POST['hhb_host_user_id'] ?? 0 ) );
+            } else {
+                // Manual entry — clear user link, save all manual fields
+                delete_post_meta( $post_id, 'hhb_host_user_id' );
+
+                update_post_meta( $post_id, 'hhb_host_name',  sanitize_text_field( wp_unslash( $_POST['hhb_host_name']  ?? '' ) ) );
+                update_post_meta( $post_id, 'hhb_host_email', sanitize_email( wp_unslash( $_POST['hhb_host_email'] ?? '' ) ) );
+                update_post_meta( $post_id, 'hhb_host_phone', sanitize_text_field( wp_unslash( $_POST['hhb_host_phone'] ?? '' ) ) );
+                update_post_meta( $post_id, 'hhb_host_bio',   sanitize_textarea_field( wp_unslash( $_POST['hhb_host_bio'] ?? '' ) ) );
+
+                // Avatar via media library
+                $avatar_id = absint( $_POST['hhb_host_avatar_id'] ?? 0 );
+                update_post_meta( $post_id, 'hhb_host_avatar_id', $avatar_id );
+                if ( $avatar_id ) {
+                    $avatar_url = wp_get_attachment_image_url( $avatar_id, 'thumbnail' );
+                    update_post_meta( $post_id, 'hhb_host_avatar_url', $avatar_url ?: '' );
+                } else {
+                    delete_post_meta( $post_id, 'hhb_host_avatar_url' );
+                }
             }
-        }
-        // Save host user ID separately (can be 0)
-        if ( isset( $_POST['hhb_host_user_id'] ) ) {
-            update_post_meta( $post_id, 'hhb_host_user_id', absint( $_POST['hhb_host_user_id'] ) );
         }
 
         // Delete Services
@@ -616,110 +940,278 @@ class HomestayMetaBoxes {
                 $wpdb->delete( $wpdb->prefix . 'hhb_ical_feeds', ['id' => intval($del_id), 'homestay_id' => $post_id] );
             }
         }
-        // Add pricing rules dynamically... (abbreviated for the rewrite limit as it's not changed here)
-        // ... handled in previous edit
+
+        // ── Save Rooms Repeater ──────────────────────────────────────────────────
+        if ( isset( $_POST['hhb_rooms_nonce'] ) && wp_verify_nonce( $_POST['hhb_rooms_nonce'], 'hhb_save_rooms' ) ) {
+            $rooms_input = isset( $_POST['hhb_rooms'] ) && is_array( $_POST['hhb_rooms'] ) ? $_POST['hhb_rooms'] : array();
+            $base_prices = array();
+
+            foreach ( $rooms_input as $room_data ) {
+                $room_id   = isset( $room_data['id'] ) ? intval( $room_data['id'] ) : 0;
+                $to_delete = ! empty( $room_data['delete'] ) && $room_data['delete'] === '1';
+
+                if ( $to_delete ) {
+                    if ( $room_id > 0 ) {
+                        wp_trash_post( $room_id );
+                    }
+                    continue;
+                }
+
+                $title = sanitize_text_field( $room_data['title'] ?? '' );
+                if ( empty( $title ) ) {
+                    $title = __( 'Room', 'himalayan-homestay-bookings' );
+                }
+
+                if ( $room_id > 0 ) {
+                    // Update existing room title. RoomMetaBoxes is not initialized so no recursion risk.
+                    wp_update_post( array( 'ID' => $room_id, 'post_title' => $title, 'post_name' => '' ) );
+                } else {
+                    // Create new child room
+                    $room_id = wp_insert_post( array(
+                        'post_title'  => $title,
+                        'post_type'   => 'hhb_room',
+                        'post_status' => 'publish',
+                        'post_parent' => $post_id,
+                    ) );
+                    if ( is_wp_error( $room_id ) || ! $room_id ) {
+                        continue;
+                    }
+                    // Ensure parent is set via meta as fallback
+                    update_post_meta( $room_id, '_hhb_homestay_id', $post_id );
+                }
+
+                // Save all room meta
+                $base_price = floatval( $room_data['base_price'] ?? 0 );
+                update_post_meta( $room_id, 'room_base_price',      $base_price );
+                update_post_meta( $room_id, 'room_weekend_price',   floatval( $room_data['weekend_price'] ?? 0 ) );
+                update_post_meta( $room_id, 'room_extra_guest_fee', floatval( $room_data['extra_guest_fee'] ?? 0 ) );
+                update_post_meta( $room_id, 'room_max_guests',      max( 1, intval( $room_data['max_guests'] ?? 2 ) ) );
+                update_post_meta( $room_id, 'room_quantity',        max( 1, intval( $room_data['quantity'] ?? 1 ) ) );
+                update_post_meta( $room_id, 'room_min_nights',      max( 1, intval( $room_data['min_nights'] ?? 1 ) ) );
+                update_post_meta( $room_id, 'room_max_nights',      max( 1, intval( $room_data['max_nights'] ?? 30 ) ) );
+                update_post_meta( $room_id, 'room_size_sqft',       sanitize_text_field( $room_data['size_sqft'] ?? '' ) );
+                update_post_meta( $room_id, 'room_bed_type',        sanitize_text_field( $room_data['bed_type'] ?? '' ) );
+
+                if ( $base_price > 0 ) {
+                    $base_prices[] = $base_price;
+                }
+            }
+
+            // Recalculate and cache price range on the homestay
+            if ( ! empty( $base_prices ) ) {
+                update_post_meta( $post_id, 'hhb_price_min', min( $base_prices ) );
+                update_post_meta( $post_id, 'hhb_price_max', max( $base_prices ) );
+            } else {
+                delete_post_meta( $post_id, 'hhb_price_min' );
+                delete_post_meta( $post_id, 'hhb_price_max' );
+            }
+        }
 
     }
 
     public static function render_host_meta_box( $post ) {
-        $host_mode   = get_post_meta( $post->ID, 'hhb_host_mode', true ) ?: 'user'; // 'user' or 'manual'
-        $host_user   = get_post_meta( $post->ID, 'hhb_host_user_id', true );
-        $host_name   = get_post_meta( $post->ID, 'hhb_host_name', true );
-        $host_email  = get_post_meta( $post->ID, 'hhb_host_email', true );
-        $host_phone  = get_post_meta( $post->ID, 'hhb_host_phone', true );
-        $host_avatar = get_post_meta( $post->ID, 'hhb_host_avatar_url', true );
-        $host_bio    = get_post_meta( $post->ID, 'hhb_host_bio', true );
+        wp_nonce_field( 'hhb_save_host_profile', 'hhb_host_nonce' );
 
-        // Get all users for the dropdown
-        $users = get_users( array( 'orderby' => 'display_name', 'fields' => array( 'ID', 'display_name', 'user_email' ) ) );
+        $host_mode      = get_post_meta( $post->ID, 'hhb_host_mode', true ) ?: 'user';
+        $host_user_id   = get_post_meta( $post->ID, 'hhb_host_user_id', true );
+        $host_name      = get_post_meta( $post->ID, 'hhb_host_name', true );
+        $host_email     = get_post_meta( $post->ID, 'hhb_host_email', true );
+        $host_phone     = get_post_meta( $post->ID, 'hhb_host_phone', true );
+        $host_bio       = get_post_meta( $post->ID, 'hhb_host_bio', true );
+        $host_avatar_id = (int) get_post_meta( $post->ID, 'hhb_host_avatar_id', true );
+        $host_avatar_url = $host_avatar_id
+            ? wp_get_attachment_image_url( $host_avatar_id, 'thumbnail' )
+            : get_post_meta( $post->ID, 'hhb_host_avatar_url', true );
+
+        // WP User data for preview
+        $wp_user_preview = null;
+        if ( $host_user_id ) {
+            $u = get_userdata( $host_user_id );
+            if ( $u ) {
+                $wp_user_preview = array(
+                    'name'   => $u->display_name,
+                    'email'  => $u->user_email,
+                    'avatar' => get_avatar_url( $u->ID, array( 'size' => 48 ) ),
+                );
+            }
+        }
+
+        $users = get_users( array(
+            'orderby' => 'display_name',
+            'fields'  => array( 'ID', 'display_name', 'user_email' ),
+        ) );
         ?>
         <style>
-            .hhb-host-toggle { display:flex; gap:4px; margin-bottom:12px; }
-            .hhb-host-toggle label { flex:1; text-align:center; padding:8px 6px; border:2px solid #ddd; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px; transition:all .2s; }
-            .hhb-host-toggle input:checked + label { border-color:#e85e30; background:#fef2ee; color:#e85e30; }
-            .hhb-host-toggle input { display:none; }
-            .hhb-host-section { display:none; }
-            .hhb-host-section.active { display:block; }
-            .hhb-host-field { margin-bottom:10px; }
-            .hhb-host-field label { display:block; margin-bottom:4px; font-weight:600; font-size:12px; }
-            .hhb-host-field input, .hhb-host-field select, .hhb-host-field textarea { width:100%; }
-            .hhb-host-preview { display:flex; align-items:center; gap:10px; padding:10px; background:#f8f8f8; border-radius:8px; margin-top:8px; }
-            .hhb-host-preview img { width:40px; height:40px; border-radius:50%; object-fit:cover; }
-            .hhb-host-preview .info { font-size:12px; line-height:1.4; }
-            .hhb-host-preview .info strong { display:block; font-size:13px; }
+            /* ── Host Metabox ──────────────────────────────────────── */
+            #hhb-host-mode-tabs { display:flex; gap:0; margin-bottom:14px; border:1px solid #c3c4c7; border-radius:5px; overflow:hidden; }
+            #hhb-host-mode-tabs button {
+                flex:1; padding:8px 4px; font-size:11px; font-weight:700; background:#f6f7f7;
+                border:none; border-right:1px solid #c3c4c7; cursor:pointer; text-transform:uppercase;
+                letter-spacing:.4px; color:#50575e; transition:background .15s,color .15s;
+            }
+            #hhb-host-mode-tabs button:last-child { border-right:none; }
+            #hhb-host-mode-tabs button.hhb-tab-active { background:#2271b1; color:#fff; }
+            .hhb-host-panel { display:none; }
+            .hhb-host-panel.hhb-panel-active { display:block; }
+            .hhb-hf { margin-bottom:10px; }
+            .hhb-hf label { display:block; font-size:11px; font-weight:700; color:#50575e; margin-bottom:3px; text-transform:uppercase; letter-spacing:.3px; }
+            .hhb-hf input[type="text"],
+            .hhb-hf input[type="email"],
+            .hhb-hf input[type="tel"],
+            .hhb-hf select,
+            .hhb-hf textarea { width:100%; }
+            .hhb-hf textarea { resize:vertical; min-height:70px; }
+            /* User preview card */
+            #hhb-user-preview {
+                display:flex; align-items:center; gap:10px; padding:10px 12px;
+                background:#f0f6fc; border:1px solid #c3c4c7; border-radius:5px; margin-top:10px;
+            }
+            #hhb-user-preview img { width:44px; height:44px; border-radius:50%; object-fit:cover; flex-shrink:0; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.15); }
+            #hhb-user-preview .hhb-up-info strong { display:block; font-size:13px; font-weight:700; color:#1d2327; }
+            #hhb-user-preview .hhb-up-info span { font-size:11px; color:#646970; }
+            /* Avatar uploader */
+            #hhb-avatar-wrap { display:flex; align-items:center; gap:10px; margin-top:4px; }
+            #hhb-avatar-preview { width:56px; height:56px; border-radius:50%; object-fit:cover; border:2px solid #c3c4c7; display:<?php echo $host_avatar_url ? 'block' : 'none'; ?>; }
+            #hhb-avatar-remove { display:<?php echo $host_avatar_url ? 'inline-block' : 'none'; ?>; }
         </style>
 
-        <!-- Mode Toggle -->
-        <div class="hhb-host-toggle">
-            <input type="radio" name="hhb_host_mode" id="hhb_host_mode_user" value="user" <?php checked( $host_mode, 'user' ); ?>>
-            <label for="hhb_host_mode_user">🔗 Select User</label>
-            <input type="radio" name="hhb_host_mode" id="hhb_host_mode_manual" value="manual" <?php checked( $host_mode, 'manual' ); ?>>
-            <label for="hhb_host_mode_manual">✏️ Enter Manually</label>
+        <!-- Mode toggle -->
+        <input type="hidden" name="hhb_host_mode" id="hhb_host_mode" value="<?php echo esc_attr( $host_mode ); ?>">
+        <div id="hhb-host-mode-tabs">
+            <button type="button" class="<?php echo $host_mode === 'user'   ? 'hhb-tab-active' : ''; ?>" data-mode="user">WP User</button>
+            <button type="button" class="<?php echo $host_mode === 'manual' ? 'hhb-tab-active' : ''; ?>" data-mode="manual">Manual Entry</button>
         </div>
 
-        <!-- Mode: Select Existing User -->
-        <div id="hhb-host-user-section" class="hhb-host-section <?php echo $host_mode === 'user' ? 'active' : ''; ?>">
-            <div class="hhb-host-field">
-                <label for="hhb_host_user_id"><?php esc_html_e( 'Assign Host (WordPress User)', 'himalayan-homestay-bookings' ); ?></label>
+        <!-- ── Panel: WP User ──────────────────────────────────── -->
+        <div class="hhb-host-panel <?php echo $host_mode === 'user' ? 'hhb-panel-active' : ''; ?>" id="hhb-panel-user">
+            <div class="hhb-hf">
+                <label for="hhb_host_user_id">Select WordPress User</label>
                 <select name="hhb_host_user_id" id="hhb_host_user_id">
-                    <option value=""><?php esc_html_e( '— Select a user —', 'himalayan-homestay-bookings' ); ?></option>
-                    <?php foreach ( $users as $user ) : ?>
-                    <option value="<?php echo esc_attr( $user->ID ); ?>" <?php selected( $host_user, $user->ID ); ?>>
-                        <?php echo esc_html( $user->display_name . ' (' . $user->user_email . ')' ); ?>
-                    </option>
+                    <option value="">— No user selected —</option>
+                    <?php foreach ( $users as $u ) : ?>
+                        <option value="<?php echo esc_attr( $u->ID ); ?>"
+                            data-name="<?php echo esc_attr( $u->display_name ); ?>"
+                            data-email="<?php echo esc_attr( $u->user_email ); ?>"
+                            data-avatar="<?php echo esc_url( get_avatar_url( $u->ID, array( 'size' => 48 ) ) ); ?>"
+                            <?php selected( $host_user_id, $u->ID ); ?>>
+                            <?php echo esc_html( $u->display_name . ' — ' . $u->user_email ); ?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
+                <p class="description" style="margin-top:5px; font-size:11px;">User's name, email &amp; avatar will display on the frontend.</p>
             </div>
-            <?php if ( $host_user && $host_mode === 'user' ) :
-                $u = get_userdata( $host_user );
-                if ( $u ) : ?>
-            <div class="hhb-host-preview">
-                <img src="<?php echo esc_url( get_avatar_url( $u->ID, array( 'size' => 80 ) ) ); ?>" alt="">
-                <div class="info">
-                    <strong><?php echo esc_html( $u->display_name ); ?></strong>
-                    <?php echo esc_html( $u->user_email ); ?>
+
+            <!-- Live preview card -->
+            <div id="hhb-user-preview" style="<?php echo $wp_user_preview ? '' : 'display:none;'; ?>">
+                <img id="hhb-up-avatar" src="<?php echo $wp_user_preview ? esc_url( $wp_user_preview['avatar'] ) : ''; ?>" alt="">
+                <div class="hhb-up-info">
+                    <strong id="hhb-up-name"><?php echo $wp_user_preview ? esc_html( $wp_user_preview['name'] ) : ''; ?></strong>
+                    <span id="hhb-up-email"><?php echo $wp_user_preview ? esc_html( $wp_user_preview['email'] ) : ''; ?></span>
                 </div>
             </div>
-                <?php endif; ?>
-            <?php endif; ?>
-            <p class="description" style="margin-top:8px;"><?php esc_html_e( 'The selected user\'s name, email, and avatar will be shown as the host on the front-end.', 'himalayan-homestay-bookings' ); ?></p>
         </div>
 
-        <!-- Mode: Manual Entry -->
-        <div id="hhb-host-manual-section" class="hhb-host-section <?php echo $host_mode === 'manual' ? 'active' : ''; ?>">
-            <div class="hhb-host-field">
-                <label><?php esc_html_e( 'Host Name', 'himalayan-homestay-bookings' ); ?></label>
-                <input type="text" name="hhb_host_name" value="<?php echo esc_attr( $host_name ); ?>" placeholder="<?php esc_attr_e( 'e.g. Raju Thapa', 'himalayan-homestay-bookings' ); ?>">
+        <!-- ── Panel: Manual Entry ─────────────────────────────── -->
+        <div class="hhb-host-panel <?php echo $host_mode === 'manual' ? 'hhb-panel-active' : ''; ?>" id="hhb-panel-manual">
+
+            <div class="hhb-hf">
+                <label>Avatar Photo</label>
+                <div id="hhb-avatar-wrap">
+                    <img id="hhb-avatar-preview" src="<?php echo esc_url( $host_avatar_url ); ?>" alt="Host Avatar">
+                    <div>
+                        <button type="button" class="button" id="hhb-avatar-select">Select Photo</button>
+                        <button type="button" class="button-link" id="hhb-avatar-remove" style="color:#b32d2e; margin-left:6px; font-size:11px;">Remove</button>
+                    </div>
+                </div>
+                <input type="hidden" name="hhb_host_avatar_id" id="hhb_host_avatar_id" value="<?php echo esc_attr( $host_avatar_id ); ?>">
             </div>
-            <div class="hhb-host-field">
-                <label><?php esc_html_e( 'Email Address', 'himalayan-homestay-bookings' ); ?></label>
-                <input type="email" name="hhb_host_email" value="<?php echo esc_attr( $host_email ); ?>">
+
+            <div class="hhb-hf">
+                <label for="hhb_host_name">Full Name *</label>
+                <input type="text" name="hhb_host_name" id="hhb_host_name" value="<?php echo esc_attr( $host_name ); ?>" placeholder="e.g. Ramesh Thapa">
             </div>
-            <div class="hhb-host-field">
-                <label><?php esc_html_e( 'Phone Number', 'himalayan-homestay-bookings' ); ?></label>
-                <input type="text" name="hhb_host_phone" value="<?php echo esc_attr( $host_phone ); ?>">
+
+            <div class="hhb-hf">
+                <label for="hhb_host_email">Email Address</label>
+                <input type="email" name="hhb_host_email" id="hhb_host_email" value="<?php echo esc_attr( $host_email ); ?>" placeholder="host@example.com">
             </div>
-            <div class="hhb-host-field">
-                <label><?php esc_html_e( 'Avatar Image URL', 'himalayan-homestay-bookings' ); ?></label>
-                <input type="url" name="hhb_host_avatar_url" value="<?php echo esc_url( $host_avatar ); ?>" placeholder="https://...">
+
+            <div class="hhb-hf">
+                <label for="hhb_host_phone">Phone / WhatsApp</label>
+                <input type="tel" name="hhb_host_phone" id="hhb_host_phone" value="<?php echo esc_attr( $host_phone ); ?>" placeholder="+91 98765 43210">
             </div>
-            <div class="hhb-host-field">
-                <label><?php esc_html_e( 'Bio / About', 'himalayan-homestay-bookings' ); ?></label>
-                <textarea name="hhb_host_bio" rows="3" placeholder="<?php esc_attr_e( 'Short introduction about the host...', 'himalayan-homestay-bookings' ); ?>"><?php echo esc_textarea( $host_bio ); ?></textarea>
+
+            <div class="hhb-hf">
+                <label for="hhb_host_bio">About the Host</label>
+                <textarea name="hhb_host_bio" id="hhb_host_bio" rows="4" placeholder="Brief introduction shown to guests on the property page..."><?php echo esc_textarea( $host_bio ); ?></textarea>
             </div>
+
+            <?php if ( $host_name || $host_email ) : ?>
+            <div style="display:flex; align-items:center; gap:10px; padding:10px; background:#f0f6fc; border:1px solid #c3c4c7; border-radius:5px; margin-top:4px;">
+                <?php if ( $host_avatar_url ) : ?>
+                    <img src="<?php echo esc_url( $host_avatar_url ); ?>" style="width:40px;height:40px;border-radius:50%;object-fit:cover;" alt="">
+                <?php endif; ?>
+                <div style="font-size:12px;">
+                    <strong style="display:block;"><?php echo esc_html( $host_name ); ?></strong>
+                    <span style="color:#646970;"><?php echo esc_html( $host_email ); ?></span>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
 
         <script>
-        (function(){
-            var radios = document.querySelectorAll('input[name="hhb_host_mode"]');
-            var sections = { user: document.getElementById('hhb-host-user-section'), manual: document.getElementById('hhb-host-manual-section') };
-            radios.forEach(function(r){
-                r.addEventListener('change', function(){
-                    sections.user.classList.toggle('active', this.value === 'user');
-                    sections.manual.classList.toggle('active', this.value === 'manual');
-                });
+        (function($) {
+            // ── Tab switching ──────────────────────────────────────
+            $('#hhb-host-mode-tabs button').on('click', function() {
+                var mode = $(this).data('mode');
+                $('#hhb_host_mode').val(mode);
+                $('#hhb-host-mode-tabs button').removeClass('hhb-tab-active');
+                $(this).addClass('hhb-tab-active');
+                $('.hhb-host-panel').removeClass('hhb-panel-active');
+                $('#hhb-panel-' + mode).addClass('hhb-panel-active');
             });
-        })();
+
+            // ── WP User select → live preview ─────────────────────
+            $('#hhb_host_user_id').on('change', function() {
+                var $opt = $(this).find(':selected');
+                var uid  = $(this).val();
+                if ( uid ) {
+                    $('#hhb-up-name').text( $opt.data('name') );
+                    $('#hhb-up-email').text( $opt.data('email') );
+                    $('#hhb-up-avatar').attr( 'src', $opt.data('avatar') );
+                    $('#hhb-user-preview').show();
+                } else {
+                    $('#hhb-user-preview').hide();
+                }
+            });
+
+            // ── Avatar uploader ────────────────────────────────────
+            var hhbAvatarFrame;
+            $('#hhb-avatar-select').on('click', function(e) {
+                e.preventDefault();
+                if ( hhbAvatarFrame ) { hhbAvatarFrame.open(); return; }
+                hhbAvatarFrame = wp.media({
+                    title:    'Select Host Avatar',
+                    button:   { text: 'Use this photo' },
+                    library:  { type: 'image' },
+                    multiple: false,
+                });
+                hhbAvatarFrame.on('select', function() {
+                    var attachment = hhbAvatarFrame.state().get('selection').first().toJSON();
+                    var url = attachment.sizes && attachment.sizes.thumbnail ? attachment.sizes.thumbnail.url : attachment.url;
+                    $('#hhb_host_avatar_id').val( attachment.id );
+                    $('#hhb-avatar-preview').attr('src', url).show();
+                    $('#hhb-avatar-remove').show();
+                });
+                hhbAvatarFrame.open();
+            });
+
+            $('#hhb-avatar-remove').on('click', function() {
+                $('#hhb_host_avatar_id').val('');
+                $('#hhb-avatar-preview').attr('src', '').hide();
+                $(this).hide();
+            });
+        })(jQuery);
         </script>
         <?php
     }

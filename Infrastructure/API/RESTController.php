@@ -25,15 +25,26 @@ class RESTController {
     public static function register_routes(): void {
         $ns = 'himalayan/v1';
 
+        // List Rooms for a Homestay
+        register_rest_route( $ns, '/rooms', [
+            'methods'             => \WP_REST_Server::READABLE,
+            'callback'            => [ __CLASS__, 'get_rooms' ],
+            'permission_callback' => '__return_true',
+            'args'                => [
+                'homestay_id' => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
+            ],
+        ] );
+
         // Check Availability.
         register_rest_route( $ns, '/check-availability', [
             'methods'             => \WP_REST_Server::READABLE,
             'callback'            => [ __CLASS__, 'check_availability' ],
             'permission_callback' => '__return_true',
             'args'                => [
-                'homestay_id' => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
-                'check_in'    => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
-                'check_out'   => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
+                'room_id'   => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
+                'check_in'  => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
+                'check_out' => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
+                'quantity'  => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
             ],
         ] );
 
@@ -43,11 +54,11 @@ class RESTController {
             'callback'            => [ __CLASS__, 'calculate_price' ],
             'permission_callback' => '__return_true',
             'args'                => [
-                'homestay_id' => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
-                'check_in'    => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
-                'check_out'   => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
-                'guests'      => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
-                'services'    => [ 'required' => false, 'default' => [] ],
+                'room_id'   => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
+                'check_in'  => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
+                'check_out' => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
+                'guests'    => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
+                'services'  => [ 'required' => false, 'default' => [] ],
             ],
         ] );
 
@@ -57,13 +68,14 @@ class RESTController {
             'callback'            => [ __CLASS__, 'create_booking' ],
             'permission_callback' => '__return_true',
             'args'                => [
-                'homestay_id'    => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
+                'room_id'        => [ 'required' => true, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'check_in'       => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
                 'check_out'      => [ 'required' => true, 'validate_callback' => [ __CLASS__, 'validate_date' ] ],
                 'customer_name'  => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
                 'customer_email' => [ 'required' => true, 'sanitize_callback' => 'sanitize_email' ],
                 'customer_phone' => [ 'required' => false, 'sanitize_callback' => 'sanitize_text_field' ],
                 'guests'         => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
+                'quantity'       => [ 'required' => false, 'default' => 1, 'validate_callback' => function( $param, $request, $key ) { return is_numeric( $param ); } ],
                 'notes'          => [ 'required' => false, 'default' => '', 'sanitize_callback' => 'sanitize_textarea_field' ],
                 'services'       => [ 'required' => false, 'default' => [] ],
             ],
@@ -123,14 +135,44 @@ class RESTController {
     // Endpoints
     // =========================================================================
 
-    public static function check_availability( \WP_REST_Request $request ) {
+    public static function get_rooms( \WP_REST_Request $request ) {
         $homestay_id = (int) $request->get_param( 'homestay_id' );
-        $check_in    = $request->get_param( 'check_in' );
-        $check_out   = $request->get_param( 'check_out' );
+        
+        $rooms = get_children( [
+            'post_parent' => $homestay_id,
+            'post_type'   => 'hhb_room',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+        ] );
+
+        $data = [];
+        foreach ( $rooms as $room ) {
+            $data[] = [
+                'id'            => $room->ID,
+                'name'          => $room->post_title,
+                'base_price'    => (float) get_post_meta( $room->ID, 'room_base_price', true ),
+                'max_guests'    => (int) get_post_meta( $room->ID, 'room_max_guests', true ),
+                'room_quantity' => (int) get_post_meta( $room->ID, 'room_quantity', true ),
+            ];
+        }
+
+        return rest_ensure_response( [ 'success' => true, 'rooms' => $data ] );
+    }
+
+    public static function check_availability( \WP_REST_Request $request ) {
+        $room_id   = (int) $request->get_param( 'room_id' );
+        $check_in  = $request->get_param( 'check_in' );
+        $check_out = $request->get_param( 'check_out' );
+        $qty       = (int) $request->get_param( 'quantity' ) ?: 1;
+
+        $homestay_id = wp_get_post_parent_id( $room_id );
+        if ( ! $homestay_id ) {
+            $homestay_id = (int) get_post_meta( $room_id, '_hhb_homestay_id', true );
+        }
 
         // Validate min/max nights.
-        $min_nights = (int) get_post_meta( $homestay_id, 'hhb_min_nights', true ) ?: 1;
-        $max_nights = (int) get_post_meta( $homestay_id, 'hhb_max_nights', true ) ?: 365;
+        $min_nights = (int) get_post_meta( $room_id, 'room_min_nights', true ) ?: (int) get_post_meta( $homestay_id, 'hhb_min_nights', true ) ?: 1;
+        $max_nights = (int) get_post_meta( $room_id, 'room_max_nights', true ) ?: (int) get_post_meta( $homestay_id, 'hhb_max_nights', true ) ?: 365;
         $nights     = (int) ( ( strtotime( $check_out ) - strtotime( $check_in ) ) / DAY_IN_SECONDS );
 
         if ( $nights < $min_nights ) {
@@ -147,7 +189,7 @@ class RESTController {
         }
 
         $availability = new AvailabilityEngine();
-        $is_overlap   = $availability->check_date_overlap( $homestay_id, $check_in, $check_out );
+        $is_overlap   = $availability->check_date_overlap( $room_id, $check_in, $check_out, $qty );
 
         return rest_ensure_response( [
             'available' => ! $is_overlap,
@@ -157,7 +199,7 @@ class RESTController {
     }
 
     public static function calculate_price( \WP_REST_Request $request ) {
-        $homestay_id = (int) $request->get_param( 'homestay_id' );
+        $room_id     = (int) $request->get_param( 'room_id' );
         $check_in    = $request->get_param( 'check_in' );
         $check_out   = $request->get_param( 'check_out' );
         $guests      = (int) $request->get_param( 'guests' );
@@ -165,7 +207,7 @@ class RESTController {
         $coupon_code = sanitize_text_field( $request->get_param( 'coupon_code' ) ?? '' );
 
         $pricing = new PricingEngine();
-        $result  = $pricing->calculate_detailed_price( $homestay_id, $check_in, $check_out, $guests, $service_ids, $coupon_code );
+        $result  = $pricing->calculate_detailed_price( $room_id, $check_in, $check_out, $guests, $service_ids, $coupon_code );
 
         if ( ( $result['grand_total'] ?? 0 ) <= 0 ) {
             return new \WP_Error( 'pricing_error', $result['error'] ?? 'Unable to calculate price.', [ 'status' => 400 ] );
@@ -184,13 +226,23 @@ class RESTController {
         }
         set_transient( $rate_key, $attempts + 1, 15 * MINUTE_IN_SECONDS );
 
-        $homestay_id = (int) $request->get_param( 'homestay_id' );
+        $room_id     = (int) $request->get_param( 'room_id' );
         $check_in    = $request->get_param( 'check_in' );
         $check_out   = $request->get_param( 'check_out' );
         $guests      = (int) $request->get_param( 'guests' );
+        $quantity    = (int) $request->get_param( 'quantity' ) ?: 1;
         $service_ids = array_map( 'intval', (array) $request->get_param( 'services' ) );
         $coupon_code = sanitize_text_field( $request->get_param( 'coupon_code' ) ?? '' );
         $payment_mode_input = sanitize_text_field( $request->get_param( 'payment_mode' ) );
+
+        $homestay_id = wp_get_post_parent_id( $room_id );
+        if ( ! $homestay_id ) {
+            $homestay_id = (int) get_post_meta( $room_id, '_hhb_homestay_id', true );
+        }
+
+        if ( ! $homestay_id ) {
+            return new \WP_Error( 'invalid_room', 'Room does not belong to a valid homestay.', [ 'status' => 400 ] );
+        }
 
         $payment_mode = $payment_mode_input;
         if ( $payment_mode_input === 'gateway' ) {
@@ -203,23 +255,21 @@ class RESTController {
             } elseif ( $paypal_enabled && ( new \Himalayan\Homestay\Infrastructure\Payments\PayPalGateway() )->is_active() ) {
                 $payment_mode = 'PayPal';
             } else {
-                // If the user picked gateway but none are correctly configured, fallback to Cash
                 $payment_mode = 'Cash'; 
             }
         } elseif ( $payment_mode_input === 'cash' ) {
             $payment_mode = 'Cash';
         }
 
-
         // 1. Re-verify availability.
         $availability = new AvailabilityEngine();
-        if ( $availability->check_date_overlap( $homestay_id, $check_in, $check_out ) ) {
-            return new \WP_Error( 'unavailable', 'Dates are no longer available.', [ 'status' => 409 ] );
+        if ( $availability->check_date_overlap( $room_id, $check_in, $check_out, $quantity ) ) {
+            return new \WP_Error( 'unavailable', 'Dates are no longer available for this room.', [ 'status' => 409 ] );
         }
 
         // 2. Calculate final price.
         $pricing    = new PricingEngine();
-        $price_data = $pricing->calculate_detailed_price( $homestay_id, $check_in, $check_out, $guests, $service_ids, $coupon_code );
+        $price_data = $pricing->calculate_detailed_price( $room_id, $check_in, $check_out, $guests, $service_ids, $coupon_code );
 
         if ( ( $price_data['grand_total'] ?? 0 ) <= 0 ) {
             return new \WP_Error( 'pricing_error', 'Invalid price calculation.', [ 'status' => 400 ] );
@@ -228,7 +278,7 @@ class RESTController {
         // 3. Create temporary hold.
         $session_id = wp_generate_password( 24, false );
         try {
-            $availability->create_temp_hold( $homestay_id, $check_in, $check_out, $session_id );
+            $availability->create_temp_hold( $homestay_id, $room_id, $check_in, $check_out, $session_id, $quantity );
         } catch ( \Exception $e ) {
             return new \WP_Error( 'hold_failed', $e->getMessage(), [ 'status' => 409 ] );
         }
@@ -241,13 +291,17 @@ class RESTController {
         $booking_manager = new BookingManager();
         $booking_id      = $booking_manager->create_booking( [
             'homestay_id'    => $homestay_id,
+            'room_id'        => $room_id,
+            'session_id'     => $session_id, // Pass down to delete temp hold immediately
             'customer_name'  => $request->get_param( 'customer_name' ),
             'customer_email' => $request->get_param( 'customer_email' ),
             'customer_phone' => $request->get_param( 'customer_phone' ) ?? '',
             'check_in'       => $check_in,
             'check_out'      => $check_out,
             'guests'         => $guests,
+            'quantity'       => $quantity,
             'total_price'    => $total,
+            'price_snapshot' => wp_json_encode( $price_data['breakdown'] ),
             'admin_commission' => $admin_c,
             'host_payout'    => $host_p,
             'deposit_amount' => $price_data['deposit_amount'],

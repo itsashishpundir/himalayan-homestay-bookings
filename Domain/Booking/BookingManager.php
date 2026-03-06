@@ -3,7 +3,7 @@
  * Booking Manager
  *
  * Handles the creation and lifecycle management of booking records,
- * including deposit tracking and state-machine–controlled status transitions.
+ * including deposit tracking and state-machine–controlled status transitions at the room level.
  *
  * @package Himalayan\Homestay\Domain\Booking
  */
@@ -26,21 +26,33 @@ class BookingManager {
         global $wpdb;
         $table = $wpdb->prefix . 'himalayan_bookings';
 
+        // Extract Room Name Snapshot
+        $room_name = '';
+        if ( ! empty( $data['room_id'] ) ) {
+            $room_name = get_the_title( $data['room_id'] );
+        }
+
         $inserted = $wpdb->insert( $table, [
-            'homestay_id'    => $data['homestay_id'],
-            'customer_name'  => $data['customer_name'],
-            'customer_email' => $data['customer_email'],
-            'customer_phone' => $data['customer_phone'] ?? '',
-            'check_in'       => $data['check_in'],
-            'check_out'      => $data['check_out'],
-            'guests'         => $data['guests'] ?? 1,
-            'adults'         => $data['adults'] ?? $data['guests'] ?? 1,
-            'children'       => $data['children'] ?? 0,
-            'total_price'    => $data['total_price'],
-            'admin_commission' => $data['admin_commission'] ?? 0,
-            'host_payout'    => $data['host_payout'] ?? $data['total_price'],
-            'deposit_amount' => $data['deposit_amount'] ?? $data['total_price'],
-            'balance_due'    => $data['balance_due'] ?? 0,
+            'homestay_id'        => $data['homestay_id'],
+            'room_id'            => $data['room_id'] ?? 0,
+            'room_name_snapshot' => $data['room_name_snapshot'] ?? $room_name,
+            'customer_name'      => $data['customer_name'],
+            'customer_email'     => $data['customer_email'],
+            'customer_phone'     => $data['customer_phone'] ?? '',
+            'check_in'           => $data['check_in'],
+            'check_out'          => $data['check_out'],
+            'guests'             => $data['guests'] ?? 1,
+            'adults'             => $data['adults'] ?? $data['guests'] ?? 1,
+            'children'           => $data['children'] ?? 0,
+            'total_price'        => $data['total_price'],
+            'price_snapshot'     => $data['price_snapshot'] ?? '', // JSON breakdown
+            'cleaning_fee'       => $data['cleaning_fee'] ?? 0,
+            'extra_guest_fee'    => $data['extra_guest_fee'] ?? 0,
+            'tax_amount'         => $data['tax_amount'] ?? 0,
+            'admin_commission'   => $data['admin_commission'] ?? 0,
+            'host_payout'        => $data['host_payout'] ?? $data['total_price'],
+            'deposit_amount'     => $data['deposit_amount'] ?? $data['total_price'],
+            'balance_due'        => $data['balance_due'] ?? 0,
             'status'             => BookingStatus::PENDING,
             'payment_token'      => wp_generate_password( 32, false ),
             'payment_expires_at' => ( isset( $data['payment_mode'] ) && $data['payment_mode'] === 'Cash' ) ? null : gmdate( 'Y-m-d H:i:s', time() + 30 * MINUTE_IN_SECONDS ),
@@ -51,6 +63,15 @@ class BookingManager {
         if ( $inserted ) {
             $booking_id = $wpdb->insert_id;
             do_action( 'himalayan_booking_created', $booking_id );
+            
+            // Delete the hold matching the session to free up other temporary hold attempts immediately
+            if ( ! empty( $data['session_id'] ) ) {
+                $wpdb->delete( $wpdb->prefix . 'himalayan_booking_hold', [ 
+                    'room_id' => $data['room_id'], 
+                    'session_id' => $data['session_id'] 
+                ] );
+            }
+            
             return $booking_id;
         }
 
@@ -139,27 +160,46 @@ class BookingManager {
         );
 
         // ── 3. Availability Ledger Synchronisation ───────────────────────
-        $ledger_table = $wpdb->prefix . 'himalayan_availability_ledger';
-        if ( $new_status === BookingStatus::CONFIRMED || $new_status === BookingStatus::APPROVED ) {
-            // Reserve dates in ledger
+        if ( $booking->room_id > 0 ) {
+            $ledger_table = $wpdb->prefix . 'himalayan_room_availability';
             $period = new \DatePeriod( new \DateTime( $booking->check_in ), new \DateInterval( 'P1D' ), new \DateTime( $booking->check_out ) );
-            foreach ( $period as $dt ) {
-                $wpdb->query( $wpdb->prepare(
-                    "INSERT IGNORE INTO {$ledger_table} (homestay_id, booking_id, date, status) VALUES (%d, %d, %s, %s)",
-                    $booking->homestay_id, $booking_id, $dt->format( 'Y-m-d' ), $new_status
-                ) );
+            $base_qty = (int) get_post_meta( $booking->room_id, 'room_quantity', true ) ?: 1;
+
+            if ( $new_status === BookingStatus::CONFIRMED || $new_status === BookingStatus::APPROVED ) {
+                // Reserve dates in aggregate ledger (Decrement quantity_available)
+                foreach ( $period as $dt ) {
+                    $d = $dt->format( 'Y-m-d' );
+                    $wpdb->query( $wpdb->prepare(
+                        "INSERT INTO {$ledger_table} (room_id, date, status, quantity_available) 
+                         VALUES (%d, %s, 'available', %d)
+                         ON DUPLICATE KEY UPDATE 
+                            quantity_available = GREATEST(0, quantity_available - 1),
+                            status = IF(quantity_available = 0, 'blocked', 'available')",
+                        $booking->room_id, $d, $base_qty - 1
+                    ) );
+                }
+            } elseif ( in_array( $new_status, [ BookingStatus::CANCELLED, BookingStatus::REFUNDED, BookingStatus::DROPPED, BookingStatus::PAYMENT_EXPIRED ], true ) ) {
+                // Restore dates in aggregate ledger (Increment quantity_available)
+                // Only if transitioning OUT of a confirmed/approved state (or just enforce bounds to be safe)
+                if ( in_array( $current_status, [ BookingStatus::CONFIRMED, BookingStatus::APPROVED ], true ) ) {
+                    foreach ( $period as $dt ) {
+                        $d = $dt->format( 'Y-m-d' );
+                        $wpdb->query( $wpdb->prepare(
+                            "UPDATE {$ledger_table} 
+                             SET quantity_available = LEAST(%d, quantity_available + 1),
+                                 status = 'available'
+                             WHERE room_id = %d AND date = %s",
+                             $base_qty, $booking->room_id, $d
+                        ) );
+                    }
+                }
             }
-        } elseif ( in_array( $new_status, [ BookingStatus::CANCELLED, BookingStatus::REFUNDED, BookingStatus::DROPPED, BookingStatus::PAYMENT_EXPIRED ], true ) ) {
-            // Drop dates from ledger (frees up availability instantly)
-            $wpdb->query( $wpdb->prepare( "DELETE FROM {$ledger_table} WHERE booking_id = %d", $booking_id ) );
         }
 
         // ── 4. Payout Table Synchronisation ──────────────────────────────
         if ( $new_status === BookingStatus::CONFIRMED ) {
-            // Create payout row transactionally inside the state machine
             self::create_payout_record( $booking_id );
         } elseif ( $new_status === BookingStatus::REFUNDED || $new_status === BookingStatus::CANCELLED ) {
-            // Cancel unpaid payouts instantly
             $wpdb->query( $wpdb->prepare(
                 "UPDATE {$wpdb->prefix}himalayan_payouts SET payout_status = 'cancelled' WHERE booking_id = %d AND payout_status = 'pending'",
                 $booking_id
@@ -172,7 +212,6 @@ class BookingManager {
         error_log( sprintf( 'HHB Transition: Booking #%d [%s → %s] by [%s] at %s', $booking_id, $current_status, $new_status, $actor, gmdate( 'Y-m-d H:i:s' ) ) );
 
         // ── 6. Fire hooks SAFELY OUTSIDE the transaction ─────────────────
-        // Email sending, API calls, Invoice Generation, Webhooks
         $hook_map = [
             BookingStatus::APPROVED        => 'himalayan_booking_approved',
             BookingStatus::CONFIRMED       => 'himalayan_payment_confirmed',
@@ -190,7 +229,7 @@ class BookingManager {
     }
 
     // =========================================================================
-    // Convenience Methods (all route through transition_status)
+    // Convenience Methods
     // =========================================================================
 
     public function approve_booking( int $booking_id ): bool {
@@ -229,9 +268,6 @@ class BookingManager {
     // Read
     // =========================================================================
 
-    /**
-     * Get a single booking by ID.
-     */
     public function get_booking( int $booking_id ): ?object {
         global $wpdb;
         return $wpdb->get_row( $wpdb->prepare(
@@ -244,15 +280,10 @@ class BookingManager {
     // Payout Auto-Creation
     // =========================================================================
 
-    public static function init_payout_hooks(): void {
-        // Disabled: Payout ledger rows are now created natively within the 
-        // transition_status() SQL transaction to guarantee financial integrity.
+    public static function init_payout_hooks() {
+        add_action( 'hhb_booking_status_confirmed', [ __CLASS__, 'create_payout_record' ] );
     }
 
-    /**
-     * Auto-create a pending payout record when a booking is confirmed.
-     * Idempotent: INSERT IGNORE on UNIQUE KEY (booking_id).
-     */
     public static function create_payout_record( int $booking_id ): void {
         global $wpdb;
         $table   = $wpdb->prefix . 'himalayan_payouts';

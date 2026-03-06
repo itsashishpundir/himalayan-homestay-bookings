@@ -34,6 +34,8 @@ class Installer {
         $sql1 = "CREATE TABLE $table_bookings (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             homestay_id bigint(20) unsigned NOT NULL,
+            room_id bigint(20) unsigned DEFAULT 0 NOT NULL,
+            room_name_snapshot varchar(255) DEFAULT '' NOT NULL,
             customer_name varchar(255) NOT NULL,
             customer_email varchar(255) NOT NULL,
             customer_phone varchar(50) DEFAULT '' NOT NULL,
@@ -43,6 +45,10 @@ class Installer {
             adults int(11) DEFAULT 1 NOT NULL,
             children int(11) DEFAULT 0 NOT NULL,
             total_price decimal(10,2) NOT NULL,
+            price_snapshot text NOT NULL,
+            cleaning_fee decimal(10,2) DEFAULT 0 NOT NULL,
+            extra_guest_fee decimal(10,2) DEFAULT 0 NOT NULL,
+            tax_amount decimal(10,2) DEFAULT 0 NOT NULL,
             admin_commission decimal(10,2) DEFAULT 0 NOT NULL,
             host_payout decimal(10,2) DEFAULT 0 NOT NULL,
             deposit_amount decimal(10,2) DEFAULT 0 NOT NULL,
@@ -62,10 +68,11 @@ class Installer {
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
             PRIMARY KEY  (id),
             KEY homestay_id (homestay_id),
+            KEY room_id (room_id),
             KEY dates (check_in, check_out),
             KEY status (status),
             KEY payment_expires_at (payment_expires_at),
-            KEY idx_availability (homestay_id, status, check_in, check_out, payment_expires_at),
+            KEY idx_availability (room_id, status, check_in, check_out, payment_expires_at),
             UNIQUE KEY token (payment_token)
         ) $collate;";
 
@@ -76,15 +83,18 @@ class Installer {
         $sql2 = "CREATE TABLE $table_holds (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             homestay_id bigint(20) unsigned NOT NULL,
+            room_id bigint(20) unsigned DEFAULT 0 NOT NULL,
             session_id varchar(255) NOT NULL,
             check_in date NOT NULL,
             check_out date NOT NULL,
+            quantity int(11) DEFAULT 1 NOT NULL,
             expires_at datetime NOT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             PRIMARY KEY  (id),
             KEY homestay_id (homestay_id),
+            KEY room_id (room_id),
             KEY expires_at (expires_at),
-            UNIQUE KEY hold_session (homestay_id, session_id)
+            UNIQUE KEY hold_session (room_id, session_id)
         ) $collate;";
 
         // =====================================================================
@@ -157,17 +167,20 @@ class Installer {
         ) $collate;";
 
         // =====================================================================
-        // 6b. Webhook Events Ledger (NEW for Phase 1 Hardening)
+        // 6b. Payment Events Ledger (NEW for Events & Idempotency)
         // =====================================================================
-        $table_webhook_events = $wpdb->prefix . 'himalayan_webhook_events';
-        $sql6b = "CREATE TABLE $table_webhook_events (
-            event_id varchar(255) NOT NULL,
-            booking_id bigint(20) unsigned DEFAULT 0 NOT NULL,
+        $table_payment_events = $wpdb->prefix . 'himalayan_payment_events';
+        $sql6b = "CREATE TABLE $table_payment_events (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            booking_id bigint(20) unsigned NOT NULL,
+            gateway varchar(50) NOT NULL,
+            transaction_id varchar(255) NOT NULL,
             event_type varchar(100) NOT NULL,
-            raw_payload_hash varchar(64) DEFAULT '' NOT NULL,
-            processed_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            PRIMARY KEY  (event_id),
-            KEY booking_id (booking_id)
+            amount decimal(10,2) NOT NULL,
+            payload text NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            UNIQUE KEY idempotency_key (gateway, transaction_id, event_type)
         ) $collate;";
 
         // =====================================================================
@@ -280,18 +293,19 @@ class Installer {
         ) $collate;";
 
         // =====================================================================
-        // 12. Availability Ledger (NEW for Phase 6 Platform Architecture)
+        // 12. Room Availability Ledger (Replaces old ledger format)
         // =====================================================================
-        $table_ledger = $wpdb->prefix . 'himalayan_availability_ledger';
-        $sql12 = "CREATE TABLE $table_ledger (
+        $table_room_availability = $wpdb->prefix . 'himalayan_room_availability';
+        $sql12 = "CREATE TABLE $table_room_availability (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-            homestay_id bigint(20) unsigned NOT NULL,
-            booking_id bigint(20) unsigned NOT NULL,
+            room_id bigint(20) unsigned NOT NULL,
             date date NOT NULL,
             status varchar(50) NOT NULL,
+            price_override decimal(10,2) DEFAULT NULL,
+            quantity_available int(11) DEFAULT 1 NOT NULL,
             PRIMARY KEY  (id),
-            KEY homestay_date (homestay_id, date),
-            UNIQUE KEY unique_ledger (homestay_id, date, booking_id)
+            KEY room_date (room_id, date),
+            UNIQUE KEY unique_room_date (room_id, date)
         ) $collate;";
 
         // =====================================================================
@@ -301,6 +315,8 @@ class Installer {
         $sql13 = "CREATE TABLE $table_archive (
             id bigint(20) unsigned NOT NULL,
             homestay_id bigint(20) unsigned NOT NULL,
+            room_id bigint(20) unsigned DEFAULT 0 NOT NULL,
+            room_name_snapshot varchar(255) DEFAULT '' NOT NULL,
             customer_name varchar(255) NOT NULL,
             customer_email varchar(255) NOT NULL,
             customer_phone varchar(50) DEFAULT '' NOT NULL,
@@ -310,6 +326,10 @@ class Installer {
             adults int(11) DEFAULT 1 NOT NULL,
             children int(11) DEFAULT 0 NOT NULL,
             total_price decimal(10,2) NOT NULL,
+            price_snapshot text NOT NULL,
+            cleaning_fee decimal(10,2) DEFAULT 0 NOT NULL,
+            extra_guest_fee decimal(10,2) DEFAULT 0 NOT NULL,
+            tax_amount decimal(10,2) DEFAULT 0 NOT NULL,
             admin_commission decimal(10,2) DEFAULT 0 NOT NULL,
             host_payout decimal(10,2) DEFAULT 0 NOT NULL,
             deposit_amount decimal(10,2) DEFAULT 0 NOT NULL,
@@ -330,6 +350,7 @@ class Installer {
             archived_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             PRIMARY KEY  (id),
             KEY homestay_id (homestay_id),
+            KEY room_id (room_id),
             KEY dates (check_in, check_out)
         ) $collate;";
 

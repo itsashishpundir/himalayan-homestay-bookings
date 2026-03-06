@@ -173,38 +173,44 @@ class PropertyManager {
         $property_id = isset( $_POST['property_id'] ) ? intval( $_POST['property_id'] ) : 0;
         $title       = sanitize_text_field( wp_unslash( $_POST['post_title'] ?? '' ) );
         $content     = wp_kses_post( wp_unslash( $_POST['post_content'] ?? '' ) );
-        
-        $base_price  = floatval( trim( $_POST['base_price_per_night'] ?? 0 ) );
-        $offer_price = floatval( trim( $_POST['offer_price_per_night'] ?? 0 ) );
-        $max_guests  = intval( $_POST['max_guests'] ?? 2 );
-        $bedrooms    = intval( $_POST['hhb_bedrooms'] ?? 1 );
-        $bathrooms   = floatval( $_POST['hhb_bathrooms'] ?? 1 );
+        $total_bedrooms  = absint( $_POST['hhb_total_bedrooms'] ?? $_POST['hhb_bedrooms'] ?? 1 );
+        $total_bathrooms = absint( $_POST['hhb_total_bathrooms'] ?? $_POST['hhb_bathrooms'] ?? 1 );
+        $max_guests      = absint( $_POST['hhb_max_guests'] ?? $_POST['max_guests'] ?? 2 );
 
-        // New Location & Rules fields
-        $lat                 = sanitize_text_field( wp_unslash( $_POST['lat'] ?? '' ) );
-        $lng                 = sanitize_text_field( wp_unslash( $_POST['lng'] ?? '' ) );
-        $min_nights          = intval( $_POST['hhb_min_nights'] ?? 1 );
-        $max_nights          = intval( $_POST['hhb_max_nights'] ?? 30 );
+        // Booking constraint fields
+        $min_nights        = absint( $_POST['hhb_min_nights'] ?? 1 );
+        $max_nights        = absint( $_POST['hhb_max_nights'] ?? 30 );
+        $extra_guest_fee   = floatval( $_POST['hhb_extra_guest_fee'] ?? 0 );
+
+        // Host profile mode
+        $host_mode       = sanitize_text_field( $_POST['hhb_host_mode'] ?? 'user' );
+        $host_name       = sanitize_text_field( wp_unslash( $_POST['hhb_host_name'] ?? '' ) );
+        $host_email      = sanitize_email( wp_unslash( $_POST['hhb_host_email'] ?? '' ) );
+        $host_phone      = sanitize_text_field( wp_unslash( $_POST['hhb_host_phone'] ?? '' ) );
+        $host_bio        = sanitize_textarea_field( wp_unslash( $_POST['hhb_host_bio'] ?? '' ) );
+        $host_avatar_url = esc_url_raw( wp_unslash( $_POST['hhb_host_avatar_url'] ?? '' ) );
+
+        // Location fields (structured address — replaces old lat/lng)
+        $address     = sanitize_text_field( wp_unslash( $_POST['hhb_address'] ?? '' ) );
+        $city        = sanitize_text_field( wp_unslash( $_POST['hhb_city'] ?? '' ) );
+        $state       = sanitize_text_field( wp_unslash( $_POST['hhb_state'] ?? '' ) );
+        $country     = sanitize_text_field( wp_unslash( $_POST['hhb_country'] ?? 'India' ) );
+        $postal_code = sanitize_text_field( wp_unslash( $_POST['hhb_postal_code'] ?? '' ) );
+
+        // Booking rules
         $buffer_days         = intval( $_POST['hhb_buffer_days'] ?? 0 );
         $deposit_percent     = intval( $_POST['hhb_deposit_percent'] ?? 0 );
-        $extra_guest_fee     = floatval( trim( $_POST['hhb_extra_guest_fee'] ?? 0 ) );
         $dos                 = sanitize_textarea_field( wp_unslash( $_POST['hhb_dos'] ?? '' ) );
         $donts               = sanitize_textarea_field( wp_unslash( $_POST['hhb_donts'] ?? '' ) );
         
         $attractions_raw     = sanitize_textarea_field( wp_unslash( $_POST['hhb_attractions'] ?? '' ) );
         $attractions         = array_filter( array_map( 'trim', explode( "\n", $attractions_raw ) ) );
 
-        // New Host fields
-        $host_mode           = sanitize_text_field( wp_unslash( $_POST['hhb_host_mode'] ?? 'user' ) );
+        // Host Reference
         $host_user_id        = intval( $_POST['hhb_host_user_id'] ?? 0 );
-        $host_name           = sanitize_text_field( wp_unslash( $_POST['hhb_host_name'] ?? '' ) );
-        $host_email          = sanitize_email( wp_unslash( $_POST['hhb_host_email'] ?? '' ) );
-        $host_phone          = sanitize_text_field( wp_unslash( $_POST['hhb_host_phone'] ?? '' ) );
-        $host_avatar_url     = esc_url_raw( wp_unslash( $_POST['hhb_host_avatar_url'] ?? '' ) );
-        $host_bio            = sanitize_textarea_field( wp_unslash( $_POST['hhb_host_bio'] ?? '' ) );
 
-        if ( empty( $title ) || $base_price <= 0 ) {
-            wp_send_json_error( 'Title and Base Price are required.' );
+        if ( empty( $title ) ) {
+            wp_send_json_error( 'Title is required.' );
         }
 
         // 4. Verify Ownership if updating
@@ -236,36 +242,56 @@ class PropertyManager {
         }
 
         // 6. Save Meta Data
-        update_post_meta( $new_post_id, 'base_price_per_night', $base_price );
-        if ( $offer_price > 0 ) {
-            update_post_meta( $new_post_id, 'offer_price_per_night', $offer_price );
-        } else {
-            delete_post_meta( $new_post_id, 'offer_price_per_night' );
-        }
-        update_post_meta( $new_post_id, 'max_guests', $max_guests );
-        update_post_meta( $new_post_id, 'hhb_bedrooms', $bedrooms );
-        update_post_meta( $new_post_id, 'hhb_bathrooms', $bathrooms );
+        update_post_meta( $new_post_id, 'hhb_total_bedrooms',  $total_bedrooms );
+        update_post_meta( $new_post_id, 'hhb_total_bathrooms', $total_bathrooms );
+        update_post_meta( $new_post_id, 'hhb_max_guests',      $max_guests );
+        update_post_meta( $new_post_id, 'hhb_min_nights',      $min_nights );
+        update_post_meta( $new_post_id, 'hhb_max_nights',      $max_nights );
+        update_post_meta( $new_post_id, 'hhb_extra_guest_fee', $extra_guest_fee );
 
-        // Save New Location & Rules fields
-        update_post_meta( $new_post_id, 'lat', $lat );
-        update_post_meta( $new_post_id, 'lng', $lng );
-        update_post_meta( $new_post_id, 'hhb_min_nights', $min_nights );
-        update_post_meta( $new_post_id, 'hhb_max_nights', $max_nights );
+        // Host profile — save mode and clear opposing mode's fields to prevent stale data
+        update_post_meta( $new_post_id, 'hhb_host_mode', $host_mode );
+        if ( 'manual' === $host_mode ) {
+            update_post_meta( $new_post_id, 'hhb_host_name',       $host_name );
+            update_post_meta( $new_post_id, 'hhb_host_email',      $host_email );
+            update_post_meta( $new_post_id, 'hhb_host_phone',      $host_phone );
+            update_post_meta( $new_post_id, 'hhb_host_bio',        $host_bio );
+            update_post_meta( $new_post_id, 'hhb_host_avatar_url', $host_avatar_url );
+            delete_post_meta( $new_post_id, 'hhb_host_user_id' );
+        }
+
+        // Save structured address (replaces old lat/lng)
+        update_post_meta( $new_post_id, 'hhb_address',     $address );
+        update_post_meta( $new_post_id, 'hhb_city',        $city );
+        update_post_meta( $new_post_id, 'hhb_state',       $state );
+        update_post_meta( $new_post_id, 'hhb_country',     $country ?: 'India' );
+        update_post_meta( $new_post_id, 'hhb_postal_code', $postal_code );
+
+        // Save Booking rules
         update_post_meta( $new_post_id, 'hhb_buffer_days', $buffer_days );
         update_post_meta( $new_post_id, 'hhb_deposit_percent', $deposit_percent );
-        update_post_meta( $new_post_id, 'hhb_extra_guest_fee', $extra_guest_fee );
         update_post_meta( $new_post_id, 'hhb_dos', $dos );
         update_post_meta( $new_post_id, 'hhb_donts', $donts );
         update_post_meta( $new_post_id, 'hhb_attractions', $attractions );
 
-        // Save New Host fields
-        update_post_meta( $new_post_id, 'hhb_host_mode', $host_mode );
-        update_post_meta( $new_post_id, 'hhb_host_user_id', $host_user_id );
-        update_post_meta( $new_post_id, 'hhb_host_name', $host_name );
-        update_post_meta( $new_post_id, 'hhb_host_email', $host_email );
-        update_post_meta( $new_post_id, 'hhb_host_phone', $host_phone );
-        update_post_meta( $new_post_id, 'hhb_host_avatar_url', $host_avatar_url );
-        update_post_meta( $new_post_id, 'hhb_host_bio', $host_bio );
+        // Save WP user ID for host (user mode) — clear manual fields when switching back
+        if ( 'user' === $host_mode ) {
+            update_post_meta( $new_post_id, 'hhb_host_user_id', $host_user_id );
+            delete_post_meta( $new_post_id, 'hhb_host_name' );
+            delete_post_meta( $new_post_id, 'hhb_host_email' );
+            delete_post_meta( $new_post_id, 'hhb_host_phone' );
+            delete_post_meta( $new_post_id, 'hhb_host_bio' );
+            delete_post_meta( $new_post_id, 'hhb_host_avatar_url' );
+        }
+
+        // Save icon amenity checkboxes (meta array)
+        $allowed_amenity_keys = [ 'wifi', 'parking', 'kitchen', 'ac', 'tv', 'washing_machine', 'hot_water', 'garden', 'balcony', 'fireplace', 'gym', 'pool' ];
+        if ( isset( $_POST['hhb_amenities'] ) && is_array( $_POST['hhb_amenities'] ) ) {
+            $saved_amenities = array_intersect( array_map( 'sanitize_key', wp_unslash( $_POST['hhb_amenities'] ) ), $allowed_amenity_keys );
+            update_post_meta( $new_post_id, 'hhb_amenities', array_values( $saved_amenities ) );
+        } else {
+            update_post_meta( $new_post_id, 'hhb_amenities', [] );
+        }
 
         // 6b. Save Media
         if ( isset( $_POST['cover_image_id'] ) && ! empty( $_POST['cover_image_id'] ) ) {
@@ -276,19 +302,11 @@ class PropertyManager {
 
         if ( isset( $_POST['gallery_image_ids'] ) ) {
             $gallery_ids = array_filter( array_map( 'intval', explode( ',', wp_unslash( $_POST['gallery_image_ids'] ) ) ) );
-            // Save as comma-separated string for single-hhb_homestay.php compatibility
-            update_post_meta( $new_post_id, 'hhb_gallery', implode(',', $gallery_ids) );
-            // Keep array version for backwards compatibility just in case
-            update_post_meta( $new_post_id, 'hhb_gallery_images', $gallery_ids );
+            // Single array source of truth
+            update_post_meta( $new_post_id, 'hhb_gallery', $gallery_ids );
         }
 
-        // 6c. Save Amenities & Taxonomy
-        if ( isset( $_POST['hhb_amenities'] ) && is_array( $_POST['hhb_amenities'] ) ) {
-            $amenities = array_map( 'sanitize_text_field', wp_unslash( $_POST['hhb_amenities'] ) );
-            update_post_meta( $new_post_id, 'hhb_amenities', $amenities );
-        } else {
-            delete_post_meta( $new_post_id, 'hhb_amenities' );
-        }
+        // 6c. Save Taxonomy
 
         // Save Taxonomy Amenity Terms
         if ( isset( $_POST['hhb_amenity_terms'] ) && is_array( $_POST['hhb_amenity_terms'] ) ) {
@@ -326,10 +344,6 @@ class PropertyManager {
             wp_set_object_terms( $new_post_id, [], 'hhb_property_type', false );
         }
 
-        // Provide a default currency if none exists
-        if ( ! get_post_meta( $new_post_id, 'currency', true ) ) {
-            update_post_meta( $new_post_id, 'currency', 'INR' );
-        }
 
         // 7. Success Response
         wp_send_json_success( [

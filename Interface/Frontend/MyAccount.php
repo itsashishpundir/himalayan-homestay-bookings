@@ -435,7 +435,8 @@ class MyAccount {
                             if ( $wishlist_query->have_posts() ) : ?>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <?php while ( $wishlist_query->have_posts() ) : $wishlist_query->the_post(); 
-                                        $price = get_post_meta( get_the_ID(), 'base_price_per_night', true );
+                                        $price_range = hhb_get_price_range( get_the_ID() );
+                                        $price       = $price_range ? $price_range['min'] : 0;
                                     ?>
                                         <a href="<?php the_permalink(); ?>" class="group flex flex-col sm:flex-row bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden hover:shadow-xl hover:shadow-slate-200/40 hover:border-primary/30 transition-all p-3 gap-4">
                                             <div class="w-full sm:w-32 h-32 bg-slate-100 overflow-hidden rounded-xl shrink-0">
