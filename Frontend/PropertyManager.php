@@ -206,6 +206,21 @@ class PropertyManager {
         $attractions_raw     = sanitize_textarea_field( wp_unslash( $_POST['hhb_attractions'] ?? '' ) );
         $attractions         = array_filter( array_map( 'trim', explode( "\n", $attractions_raw ) ) );
 
+        // Property Info
+        $property_size    = absint( $_POST['hhb_property_size'] ?? 0 );
+        $year_established = absint( $_POST['hhb_year_established'] ?? 0 );
+
+        // Check-in / Check-out 
+        $checkin_time     = sanitize_text_field( wp_unslash( $_POST['hhb_checkin_time'] ?? '14:00' ) );
+        $checkout_time    = sanitize_text_field( wp_unslash( $_POST['hhb_checkout_time'] ?? '11:00' ) );
+        $early_checkin    = sanitize_text_field( wp_unslash( $_POST['hhb_early_checkin'] ?? 'no' ) );
+        $late_checkout    = sanitize_text_field( wp_unslash( $_POST['hhb_late_checkout'] ?? 'no' ) );
+
+        // Contact
+        $contact_phone    = sanitize_text_field( wp_unslash( $_POST['hhb_contact_phone'] ?? '' ) );
+        $contact_email    = sanitize_email( wp_unslash( $_POST['hhb_contact_email'] ?? '' ) );
+        $website_url      = esc_url_raw( wp_unslash( $_POST['hhb_website_url'] ?? '' ) );
+
         // Host Reference
         $host_user_id        = intval( $_POST['hhb_host_user_id'] ?? 0 );
 
@@ -273,6 +288,21 @@ class PropertyManager {
         update_post_meta( $new_post_id, 'hhb_dos', $dos );
         update_post_meta( $new_post_id, 'hhb_donts', $donts );
         update_post_meta( $new_post_id, 'hhb_attractions', $attractions );
+
+        // Save Additional Property Info
+        update_post_meta( $new_post_id, 'hhb_property_size', $property_size );
+        update_post_meta( $new_post_id, 'hhb_year_established', $year_established );
+        
+        // Save Check-in / Check-out
+        update_post_meta( $new_post_id, 'hhb_checkin_time', $checkin_time );
+        update_post_meta( $new_post_id, 'hhb_checkout_time', $checkout_time );
+        update_post_meta( $new_post_id, 'hhb_early_checkin', $early_checkin );
+        update_post_meta( $new_post_id, 'hhb_late_checkout', $late_checkout );
+
+        // Save Contact
+        update_post_meta( $new_post_id, 'hhb_contact_phone', $contact_phone );
+        update_post_meta( $new_post_id, 'hhb_contact_email', $contact_email );
+        update_post_meta( $new_post_id, 'hhb_website_url', $website_url );
 
         // Save WP user ID for host (user mode) — clear manual fields when switching back
         if ( 'user' === $host_mode ) {
@@ -344,6 +374,94 @@ class PropertyManager {
             wp_set_object_terms( $new_post_id, [], 'hhb_property_type', false );
         }
 
+
+        // 6d. Save Rooms Repeater
+        if ( isset( $_POST['hhb_rooms_nonce'] ) && wp_verify_nonce( $_POST['hhb_rooms_nonce'], 'hhb_save_rooms' ) ) {
+            $rooms_input = isset( $_POST['hhb_rooms'] ) && is_array( $_POST['hhb_rooms'] ) ? wp_unslash( $_POST['hhb_rooms'] ) : array();
+            $base_prices = array();
+
+            foreach ( $rooms_input as $room_data ) {
+                $room_id_raw = $room_data['id'] ?? '';
+                $is_temp     = strpos( $room_id_raw, 'temp_' ) === 0;
+                $room_id     = intval( $room_id_raw );
+                
+                $to_delete = ! empty( $room_data['delete'] ) && $room_data['delete'] === '1';
+
+                if ( $to_delete ) {
+                    if ( $room_id > 0 ) {
+                        wp_trash_post( $room_id );
+                    }
+                    continue;
+                }
+
+                $title = sanitize_text_field( $room_data['title'] ?? '' );
+                if ( empty( $title ) ) {
+                    $title = __( 'Room', 'himalayan-homestay-bookings' );
+                }
+
+                if ( $room_id > 0 && ! $is_temp ) {
+                    // Update existing room title.
+                    wp_update_post( array( 'ID' => $room_id, 'post_title' => $title, 'post_name' => '' ) );
+                } else {
+                    $existing_room = 0;
+                    if ( $is_temp ) {
+                        $existing_rooms = get_posts( [
+                            'post_parent' => $new_post_id,
+                            'post_type'   => 'hhb_room',
+                            'meta_key'    => '_hhb_temp_id',
+                            'meta_value'  => $room_id_raw,
+                            'fields'      => 'ids',
+                            'post_status' => 'any',
+                            'numberposts' => 1
+                        ] );
+                        if ( ! empty( $existing_rooms ) ) {
+                            $existing_room = $existing_rooms[0];
+                        }
+                    }
+
+                    if ( $existing_room > 0 ) {
+                        $room_id = $existing_room;
+                        wp_update_post( array( 'ID' => $room_id, 'post_title' => $title, 'post_name' => '' ) );
+                    } else {
+                        // Create new child room
+                        $room_id = wp_insert_post( array(
+                            'post_title'  => $title,
+                            'post_type'   => 'hhb_room',
+                            'post_status' => 'publish',
+                            'post_parent' => $new_post_id,
+                        ) );
+                        if ( is_wp_error( $room_id ) || ! $room_id ) {
+                            continue;
+                        }
+                        // Ensure parent is set via meta as fallback
+                        update_post_meta( $room_id, '_hhb_homestay_id', $new_post_id );
+                        if ( $is_temp ) {
+                            update_post_meta( $room_id, '_hhb_temp_id', $room_id_raw );
+                        }
+                    }
+                }
+
+                // Save all room meta
+                $base_price = floatval( $room_data['base_price'] ?? 0 );
+                update_post_meta( $room_id, 'room_base_price',      $base_price );
+                update_post_meta( $room_id, 'room_max_guests',      max( 1, intval( $room_data['max_guests'] ?? 2 ) ) );
+                update_post_meta( $room_id, 'room_quantity',        max( 1, intval( $room_data['quantity'] ?? 1 ) ) );
+                update_post_meta( $room_id, 'room_bed_type',        sanitize_text_field( $room_data['bed_type'] ?? '' ) );
+
+                if ( $base_price > 0 ) {
+                    $base_prices[] = $base_price;
+                }
+            }
+
+            // Recalculate and cache price range on the homestay
+            if ( ! empty( $base_prices ) ) {
+                update_post_meta( $new_post_id, 'hhb_price_min', min( $base_prices ) );
+                update_post_meta( $new_post_id, 'hhb_price_max', max( $base_prices ) );
+            } else {
+                delete_post_meta( $new_post_id, 'hhb_price_min' );
+                delete_post_meta( $new_post_id, 'hhb_price_max' );
+            }
+        }
 
         // 7. Success Response
         wp_send_json_success( [

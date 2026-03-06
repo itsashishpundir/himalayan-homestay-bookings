@@ -264,6 +264,13 @@ final class Himalayan_Homestay_Bookings {
         add_action( 'himalayan_cleanup_expired_holds', [ $this, 'cleanup_holds' ] );
         // The iCal sync action is registered within iCalManager::init()
 
+        // ── Frontend Host Dashboard Scripts ──────────────────────────────────
+        add_action( 'wp_enqueue_scripts', function() {
+            if ( is_page_template( [ 'dashboard.php', 'host-panel-template', 'page-host-panel.php' ] ) ) {
+                wp_enqueue_media();
+            }
+        });
+
         // ── Archive Filter Query ─────────────────────────────────────────────
         // Filter the main WP_Query on the hhb_homestay archive by ?location= and ?type= GET params.
         // This was previously in the theme's functions.php — now owned by the plugin.

@@ -124,7 +124,7 @@ class HomestayMetaBoxes {
 
         <script type="text/html" id="hhb-room-template">
             <div class="hhb-room-row" style="border:1px solid #c3c4c7; border-radius:4px; padding:15px; margin-bottom:12px; background:#fafafa;">
-                <input type="hidden" name="hhb_rooms[__IDX__][id]" value="0">
+                <input type="hidden" name="hhb_rooms[__IDX__][id]" value="__TEMPID__">
                 <input type="hidden" name="hhb_rooms[__IDX__][delete]" class="hhb-room-delete-flag" value="0">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                     <strong style="font-size:13px; color:#1d2327; margin-right:8px;">Room Name:</strong>
@@ -149,7 +149,8 @@ class HomestayMetaBoxes {
             var hhbRoomIdx = <?php echo count( $rooms ); ?>;
 
             $('#hhb-add-room').on('click', function() {
-                var html = $('#hhb-room-template').html().replace(/__IDX__/g, hhbRoomIdx);
+                var tempId = 'temp_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+                var html = $('#hhb-room-template').html().replace(/__IDX__/g, hhbRoomIdx).replace(/__TEMPID__/g, tempId);
                 $('#hhb-rooms-container').append(html);
                 hhbRoomIdx++;
             });
@@ -157,7 +158,7 @@ class HomestayMetaBoxes {
             $(document).on('click', '.hhb-remove-room', function() {
                 var $row = $(this).closest('.hhb-room-row');
                 var roomId = $row.find('input[name$="[id]"]').val();
-                if ( roomId && roomId !== '0' ) {
+                if ( roomId && roomId !== '0' && roomId.indexOf('temp_') !== 0 ) {
                     $row.find('.hhb-room-delete-flag').val('1');
                     $row.slideUp(200);
                 } else {
@@ -268,28 +269,28 @@ class HomestayMetaBoxes {
         );
         ?>
         <style>
-            .hhb-details-section { margin-bottom: 24px; }
+            .hhb-details-section { margin-bottom: 12px; }
             .hhb-details-section h4 {
-                margin: 0 0 12px;
-                padding: 6px 10px;
+                margin: 0 0 8px;
+                padding: 4px 8px;
                 background: #f0f0f1;
                 border-left: 3px solid #2271b1;
-                font-size: 12px;
+                font-size: 11px;
                 text-transform: uppercase;
                 letter-spacing: .5px;
                 color: #1d2327;
             }
-            .hhb-details-grid { display: grid; gap: 14px; }
+            .hhb-details-grid { display: grid; gap: 8px; }
             .hhb-details-grid.cols-2 { grid-template-columns: 1fr 1fr; }
             .hhb-details-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
             .hhb-details-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
             .hhb-details-grid.cols-5 { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
             .hhb-d-field label {
                 display: block;
-                font-size: 11px;
+                font-size: 10px;
                 font-weight: 700;
                 color: #50575e;
-                margin-bottom: 4px;
+                margin-bottom: 2px;
                 text-transform: uppercase;
                 letter-spacing: .3px;
             }
@@ -298,11 +299,11 @@ class HomestayMetaBoxes {
             .hhb-d-field input[type="url"],
             .hhb-d-field input[type="number"],
             .hhb-d-field input[type="time"],
-            .hhb-d-field select { width: 100%; }
-            .hhb-d-field .description { margin-top: 3px; font-size: 11px; color: #8c8f94; }
-            .hhb-toggle-row { display: flex; gap: 20px; align-items: center; margin-top: 4px; }
-            .hhb-toggle-row label { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; cursor: pointer; }
-            .hhb-info-note { background: #e8f4fd; border-left: 3px solid #2271b1; padding: 8px 12px; font-size: 12px; color: #2271b1; margin-bottom: 18px; border-radius: 0 3px 3px 0; }
+            .hhb-d-field select { width: 100%; min-height: 28px; line-height: normal; font-size: 12px; padding: 2px 6px; }
+            .hhb-d-field .description { margin-top: 2px; font-size: 10px; color: #8c8f94; line-height: 1.2; }
+            .hhb-toggle-row { display: flex; gap: 15px; align-items: center; margin-top: 2px; }
+            .hhb-toggle-row label { display: flex; align-items: center; gap: 4px; font-weight: 600; font-size: 11px; cursor: pointer; }
+            .hhb-info-note { background: #e8f4fd; border-left: 3px solid #2271b1; padding: 6px 10px; font-size: 11px; color: #2271b1; margin-bottom: 12px; border-radius: 0 3px 3px 0; display: inline-block; }
         </style>
 
         <p class="hhb-info-note">Room-level pricing and capacity is managed in the <strong>Rooms</strong> metabox above. Fill in property-wide details here.</p>
@@ -947,7 +948,10 @@ class HomestayMetaBoxes {
             $base_prices = array();
 
             foreach ( $rooms_input as $room_data ) {
-                $room_id   = isset( $room_data['id'] ) ? intval( $room_data['id'] ) : 0;
+                $room_id_raw = $room_data['id'] ?? '';
+                $is_temp     = strpos( $room_id_raw, 'temp_' ) === 0;
+                $room_id     = intval( $room_id_raw );
+                
                 $to_delete = ! empty( $room_data['delete'] ) && $room_data['delete'] === '1';
 
                 if ( $to_delete ) {
@@ -962,22 +966,46 @@ class HomestayMetaBoxes {
                     $title = __( 'Room', 'himalayan-homestay-bookings' );
                 }
 
-                if ( $room_id > 0 ) {
+                if ( $room_id > 0 && ! $is_temp ) {
                     // Update existing room title. RoomMetaBoxes is not initialized so no recursion risk.
                     wp_update_post( array( 'ID' => $room_id, 'post_title' => $title, 'post_name' => '' ) );
                 } else {
-                    // Create new child room
-                    $room_id = wp_insert_post( array(
-                        'post_title'  => $title,
-                        'post_type'   => 'hhb_room',
-                        'post_status' => 'publish',
-                        'post_parent' => $post_id,
-                    ) );
-                    if ( is_wp_error( $room_id ) || ! $room_id ) {
-                        continue;
+                    $existing_room = 0;
+                    if ( $is_temp ) {
+                        $existing_rooms = get_posts( [
+                            'post_parent' => $post_id,
+                            'post_type'   => 'hhb_room',
+                            'meta_key'    => '_hhb_temp_id',
+                            'meta_value'  => $room_id_raw,
+                            'fields'      => 'ids',
+                            'post_status' => 'any',
+                            'numberposts' => 1
+                        ] );
+                        if ( ! empty( $existing_rooms ) ) {
+                            $existing_room = $existing_rooms[0];
+                        }
                     }
-                    // Ensure parent is set via meta as fallback
-                    update_post_meta( $room_id, '_hhb_homestay_id', $post_id );
+
+                    if ( $existing_room > 0 ) {
+                        $room_id = $existing_room;
+                        wp_update_post( array( 'ID' => $room_id, 'post_title' => $title, 'post_name' => '' ) );
+                    } else {
+                        // Create new child room
+                        $room_id = wp_insert_post( array(
+                            'post_title'  => $title,
+                            'post_type'   => 'hhb_room',
+                            'post_status' => 'publish',
+                            'post_parent' => $post_id,
+                        ) );
+                        if ( is_wp_error( $room_id ) || ! $room_id ) {
+                            continue;
+                        }
+                        // Ensure parent is set via meta as fallback
+                        update_post_meta( $room_id, '_hhb_homestay_id', $post_id );
+                        if ( $is_temp ) {
+                            update_post_meta( $room_id, '_hhb_temp_id', $room_id_raw );
+                        }
+                    }
                 }
 
                 // Save all room meta

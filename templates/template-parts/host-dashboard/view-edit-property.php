@@ -23,11 +23,23 @@ $title       = $is_new ? '' : get_the_title( $property_id );
 $description = $is_new ? '' : get_post_field( 'post_content', $property_id );
 $base_price  = $is_new ? '' : get_post_meta( $property_id, 'base_price_per_night', true );
 $offer_price = $is_new ? '' : get_post_meta( $property_id, 'offer_price_per_night', true );
-$max_guests  = $is_new ? '2' : get_post_meta( $property_id, 'max_guests', true );
-$bedrooms    = $is_new ? '1' : get_post_meta( $property_id, 'hhb_bedrooms', true );
-$bathrooms   = $is_new ? '1' : get_post_meta( $property_id, 'hhb_bathrooms', true );
-$lat         = $is_new ? '' : get_post_meta( $property_id, 'lat', true );
-$lng         = $is_new ? '' : get_post_meta( $property_id, 'lng', true );
+$max_guests  = $is_new ? '2' : ( (get_post_meta( $property_id, 'hhb_max_guests', true ) ?: get_post_meta( $property_id, 'max_guests', true )) );
+$bedrooms    = $is_new ? '1' : ( (get_post_meta( $property_id, 'hhb_total_bedrooms', true ) ?: get_post_meta( $property_id, 'hhb_bedrooms', true )) );
+$bathrooms   = $is_new ? '1' : ( (get_post_meta( $property_id, 'hhb_total_bathrooms', true ) ?: get_post_meta( $property_id, 'hhb_bathrooms', true )) );
+$property_size    = $is_new ? '' : get_post_meta( $property_id, 'hhb_property_size', true );
+$year_established = $is_new ? '' : get_post_meta( $property_id, 'hhb_year_established', true );
+$address       = $is_new ? '' : get_post_meta( $property_id, 'hhb_address', true );
+$city          = $is_new ? '' : get_post_meta( $property_id, 'hhb_city', true );
+$state         = $is_new ? '' : get_post_meta( $property_id, 'hhb_state', true );
+$country       = $is_new ? '' : get_post_meta( $property_id, 'hhb_country', true );
+$postal_code   = $is_new ? '' : get_post_meta( $property_id, 'hhb_postal_code', true );
+$checkin_time    = $is_new ? '14:00' : ( get_post_meta( $property_id, 'hhb_checkin_time', true ) ?: '14:00' );
+$checkout_time   = $is_new ? '11:00' : ( get_post_meta( $property_id, 'hhb_checkout_time', true ) ?: '11:00' );
+$early_checkin   = $is_new ? 'no' : get_post_meta( $property_id, 'hhb_early_checkin', true );
+$late_checkout   = $is_new ? 'no' : get_post_meta( $property_id, 'hhb_late_checkout', true );
+$contact_phone = $is_new ? '' : get_post_meta( $property_id, 'hhb_contact_phone', true );
+$contact_email = $is_new ? '' : get_post_meta( $property_id, 'hhb_contact_email', true );
+$website_url   = $is_new ? '' : get_post_meta( $property_id, 'hhb_website_url', true );
 $min_nights  = $is_new ? '1' : get_post_meta( $property_id, 'hhb_min_nights', true );
 $max_nights  = $is_new ? '30' : get_post_meta( $property_id, 'hhb_max_nights', true );
 $buffer_days = $is_new ? '0' : get_post_meta( $property_id, 'hhb_buffer_days', true );
@@ -70,6 +82,7 @@ $gallery_str  = implode( ',', $gallery_meta );
 <div class="hhb-tabs" id="hhb-form-tabs">
     <button type="button" class="hhb-tab-btn active" data-target="tab-basics">Basic Info</button>
     <button type="button" class="hhb-tab-btn" data-target="tab-pricing">Pricing &amp; Capacity</button>
+    <button type="button" class="hhb-tab-btn" data-target="tab-rooms">Rooms</button>
     <button type="button" class="hhb-tab-btn" data-target="tab-location">Location</button>
     <button type="button" class="hhb-tab-btn" data-target="tab-media">Photos</button>
     <button type="button" class="hhb-tab-btn" data-target="tab-amenities">Amenities</button>
@@ -107,6 +120,16 @@ $gallery_str  = implode( ',', $gallery_meta );
                 ?>
             </select>
         </div>
+        <div class="hhb-row">
+            <div class="hhb-col"><div class="hhb-field-group"><label>Property Size (sq.ft)</label><input type="number" name="hhb_property_size" value="<?php echo esc_attr( $property_size ); ?>" min="0"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>Year Established</label><input type="number" name="hhb_year_established" value="<?php echo esc_attr( $year_established ); ?>" min="1900"></div></div>
+        </div>
+        <h3 style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Contact</h3>
+        <div class="hhb-row">
+            <div class="hhb-col"><div class="hhb-field-group"><label>Contact Phone</label><input type="text" name="hhb_contact_phone" value="<?php echo esc_attr( $contact_phone ); ?>"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>Contact Email</label><input type="email" name="hhb_contact_email" value="<?php echo esc_attr( $contact_email ); ?>"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>Website / Social Link</label><input type="url" name="hhb_website_url" value="<?php echo esc_attr( $website_url ); ?>"></div></div>
+        </div>
     </div>
 
     <!-- TAB: Pricing -->
@@ -129,18 +152,124 @@ $gallery_str  = implode( ',', $gallery_meta );
             </div>
         </div>
         <div class="hhb-row">
-            <div class="hhb-col"><div class="hhb-field-group"><label>Max Guests</label><input type="number" name="max_guests" value="<?php echo esc_attr( $max_guests ); ?>" required min="1"></div></div>
-            <div class="hhb-col"><div class="hhb-field-group"><label>Bedrooms</label><input type="number" name="hhb_bedrooms" value="<?php echo esc_attr( $bedrooms ); ?>" min="0"></div></div>
-            <div class="hhb-col"><div class="hhb-field-group"><label>Bathrooms</label><input type="number" name="hhb_bathrooms" value="<?php echo esc_attr( $bathrooms ); ?>" min="0" step="0.5"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>Max Guests</label><input type="number" name="hhb_max_guests" value="<?php echo esc_attr( $max_guests ); ?>" required min="1"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>Bedrooms</label><input type="number" name="hhb_total_bedrooms" value="<?php echo esc_attr( $bedrooms ); ?>" min="0"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>Bathrooms</label><input type="number" name="hhb_total_bathrooms" value="<?php echo esc_attr( $bathrooms ); ?>" min="0" step="0.5"></div></div>
         </div>
+    </div>
+
+    <!-- TAB: Rooms -->
+    <div id="tab-rooms" class="hhb-form-section hhb-tab-content" style="display:none;">
+        <h2 style="margin: 0 0 24px; font-size: 18px; color: #0f172a;">Room Management</h2>
+        <?php wp_nonce_field( 'hhb_save_rooms', 'hhb_rooms_nonce' ); ?>
+        <p style="color: #64748b; font-size: 14px; margin-bottom: 24px;">Add individual room types if your property rents by the room instead of the entire property.</p>
+        
+        <div id="hhb-rooms-container">
+            <?php
+            $rooms = $is_new ? [] : get_posts([
+                'post_type'      => 'hhb_room',
+                'post_parent'    => $property_id,
+                'posts_per_page' => -1,
+                'post_status'    => ['publish', 'draft'],
+                'orderby'        => 'date',
+                'order'          => 'ASC',
+            ]);
+            
+            $room_row_html = function( $index, $f ) {
+                ob_start(); ?>
+                <div class="hhb-room-row" style="border:1px solid #e2e8f0; border-radius:8px; padding:20px; margin-bottom:16px; background:#f8fafc; position:relative;">
+                    <input type="hidden" name="hhb_rooms[<?php echo $index; ?>][id]" value="<?php echo esc_attr( $f['id'] ); ?>">
+                    <input type="hidden" name="hhb_rooms[<?php echo $index; ?>][delete]" class="hhb-room-delete-flag" value="0">
+                    
+                    <button type="button" class="hhb-remove-room" style="position:absolute; top:16px; right:16px; background:none; border:none; color:#ef4444; font-size:20px; cursor:pointer;" title="Remove Room">&times;</button>
+                    
+                    <div class="hhb-field-group">
+                        <label>Room Name</label>
+                        <input type="text" name="hhb_rooms[<?php echo $index; ?>][title]" value="<?php echo esc_attr( $f['title'] ); ?>" placeholder="e.g. Deluxe Double Room" style="font-weight:600;">
+                    </div>
+                    
+                    <div class="hhb-row">
+                        <div class="hhb-col">
+                            <div class="hhb-field-group">
+                                <label>Base Price / Night (₹)</label>
+                                <input type="number" name="hhb_rooms[<?php echo $index; ?>][base_price]" value="<?php echo esc_attr( $f['base_price'] ); ?>" step="0.01" min="0">
+                            </div>
+                        </div>
+                        <div class="hhb-col">
+                            <div class="hhb-field-group">
+                                <label>Bed Type (e.g. 1 King)</label>
+                                <input type="text" name="hhb_rooms[<?php echo $index; ?>][bed_type]" value="<?php echo esc_attr( $f['bed_type'] ); ?>">
+                            </div>
+                        </div>
+                        <div class="hhb-col">
+                            <div class="hhb-field-group">
+                                <label>Max Guests</label>
+                                <input type="number" name="hhb_rooms[<?php echo $index; ?>][max_guests]" value="<?php echo esc_attr( $f['max_guests'] ); ?>" min="1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="hhb-row" style="margin-bottom:0;">
+                        <div class="hhb-col">
+                            <div class="hhb-field-group" style="margin-bottom:0;">
+                                <label>Quantity Available</label>
+                                <input type="number" name="hhb_rooms[<?php echo $index; ?>][quantity]" value="<?php echo esc_attr( $f['quantity'] ); ?>" min="1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <?php return ob_get_clean();
+            };
+
+            foreach ( $rooms as $index => $room ) {
+                echo $room_row_html( $index, [
+                    'id'         => $room->ID,
+                    'title'      => $room->post_title,
+                    'base_price' => get_post_meta( $room->ID, 'room_base_price', true ),
+                    'max_guests' => get_post_meta( $room->ID, 'room_max_guests', true ) ?: 2,
+                    'quantity'   => get_post_meta( $room->ID, 'room_quantity', true ) ?: 1,
+                    'bed_type'   => get_post_meta( $room->ID, 'room_bed_type', true ),
+                ] );
+            }
+            ?>
+        </div>
+        <button type="button" id="hhb-add-room-btn" class="hhb-btn hhb-btn-outline" style="background:#fff;border:1px solid #cbd5e1;color:#0f172a; margin-top:8px;">+ Add Another Room</button>
+        
+        <script type="text/html" id="hhb-room-template">
+            <div class="hhb-room-row" style="border:1px solid #e2e8f0; border-radius:8px; padding:20px; margin-bottom:16px; background:#f8fafc; position:relative;">
+                <input type="hidden" name="hhb_rooms[__IDX__][id]" value="__TEMPID__">
+                <input type="hidden" name="hhb_rooms[__IDX__][delete]" class="hhb-room-delete-flag" value="0">
+                <button type="button" class="hhb-remove-room" style="position:absolute; top:16px; right:16px; background:none; border:none; color:#ef4444; font-size:20px; cursor:pointer;" title="Remove Room">&times;</button>
+                <div class="hhb-field-group">
+                    <label>Room Name</label>
+                    <input type="text" name="hhb_rooms[__IDX__][title]" value="" placeholder="e.g. Deluxe Double Room" style="font-weight:600;">
+                </div>
+                <div class="hhb-row">
+                    <div class="hhb-col"><div class="hhb-field-group"><label>Base Price / Night (₹)</label><input type="number" name="hhb_rooms[__IDX__][base_price]" value="" step="0.01" min="0"></div></div>
+                    <div class="hhb-col"><div class="hhb-field-group"><label>Bed Type (e.g. 1 King)</label><input type="text" name="hhb_rooms[__IDX__][bed_type]" value=""></div></div>
+                    <div class="hhb-col"><div class="hhb-field-group"><label>Max Guests</label><input type="number" name="hhb_rooms[__IDX__][max_guests]" value="2" min="1"></div></div>
+                </div>
+                <div class="hhb-row" style="margin-bottom:0;">
+                    <div class="hhb-col"><div class="hhb-field-group" style="margin-bottom:0;"><label>Quantity Available</label><input type="number" name="hhb_rooms[__IDX__][quantity]" value="1" min="1"></div></div>
+                </div>
+            </div>
+        </script>
     </div>
 
     <!-- TAB: Location -->
     <div id="tab-location" class="hhb-form-section hhb-tab-content" style="display:none;">
-        <h2 style="margin: 0 0 24px; font-size: 18px; color: #0f172a;">Location &amp; Map</h2>
+        <h2 style="margin: 0 0 24px; font-size: 18px; color: #0f172a;">Location</h2>
+        <div class="hhb-field-group">
+            <label>Street Address *</label>
+            <input type="text" name="hhb_address" value="<?php echo esc_attr( $address ); ?>" placeholder="e.g. 12 Hill View Road" required>
+        </div>
         <div class="hhb-row">
-            <div class="hhb-col"><div class="hhb-field-group"><label>Latitude</label><input type="text" name="lat" value="<?php echo esc_attr( $lat ); ?>" placeholder="e.g. 32.2396"></div></div>
-            <div class="hhb-col"><div class="hhb-field-group"><label>Longitude</label><input type="text" name="lng" value="<?php echo esc_attr( $lng ); ?>" placeholder="e.g. 77.1887"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>City / Village *</label><input type="text" name="hhb_city" value="<?php echo esc_attr( $city ); ?>" required></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>State *</label><input type="text" name="hhb_state" value="<?php echo esc_attr( $state ); ?>" required></div></div>
+        </div>
+        <div class="hhb-row">
+            <div class="hhb-col"><div class="hhb-field-group"><label>Country</label><input type="text" name="hhb_country" value="<?php echo esc_attr( $country ?: 'India' ); ?>"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>PIN / Postal Code</label><input type="text" name="hhb_postal_code" value="<?php echo esc_attr( $postal_code ); ?>"></div></div>
         </div>
     </div>
 
@@ -211,6 +340,28 @@ $gallery_str  = implode( ',', $gallery_meta );
     <!-- TAB: Rules & Info -->
     <div id="tab-rules" class="hhb-form-section hhb-tab-content" style="display:none;">
         <h2 style="margin: 0 0 24px; font-size: 18px; color: #0f172a;">Rules, Info &amp; Booking Constraints</h2>
+        <div class="hhb-row">
+            <div class="hhb-col"><div class="hhb-field-group"><label>Check-in Time</label><input type="time" name="hhb_checkin_time" value="<?php echo esc_attr( $checkin_time ); ?>"></div></div>
+            <div class="hhb-col"><div class="hhb-field-group"><label>Check-out Time</label><input type="time" name="hhb_checkout_time" value="<?php echo esc_attr( $checkout_time ); ?>"></div></div>
+        </div>
+        <div class="hhb-row">
+            <div class="hhb-col">
+                <div class="hhb-field-group"><label>Early Check-in Available?</label>
+                    <select name="hhb_early_checkin">
+                        <option value="no" <?php selected($early_checkin, 'no'); ?>>No</option>
+                        <option value="yes" <?php selected($early_checkin, 'yes'); ?>>Yes</option>
+                    </select>
+                </div>
+            </div>
+            <div class="hhb-col">
+                <div class="hhb-field-group"><label>Late Check-out Available?</label>
+                    <select name="hhb_late_checkout">
+                        <option value="no" <?php selected($late_checkout, 'no'); ?>>No</option>
+                        <option value="yes" <?php selected($late_checkout, 'yes'); ?>>Yes</option>
+                    </select>
+                </div>
+            </div>
+        </div>
         <div class="hhb-row">
             <div class="hhb-col"><div class="hhb-field-group"><label>Minimum Nights</label><input type="number" name="hhb_min_nights" value="<?php echo esc_attr($min_nights); ?>" min="1"></div></div>
             <div class="hhb-col"><div class="hhb-field-group"><label>Maximum Nights</label><input type="number" name="hhb_max_nights" value="<?php echo esc_attr($max_nights); ?>" min="1"></div></div>
@@ -294,6 +445,39 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof jQuery !== 'undefined' && jQuery.fn.select2) {
         jQuery('.hhb-select2').select2({ tags: true, tokenSeparators: [','] });
     }
+
+    // Room Repeater Logic
+    let roomIndexCounter = document.querySelectorAll('.hhb-room-row').length;
+    const roomContainer = document.getElementById('hhb-rooms-container');
+    const templateHTML = document.getElementById('hhb-room-template').innerHTML;
+
+    document.getElementById('hhb-add-room-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        let html = templateHTML
+            .replace(/__IDX__/g, roomIndexCounter++)
+            .replace(/__TEMPID__/g, 'temp_' + Date.now());
+        
+        let div = document.createElement('div');
+        div.innerHTML = html;
+        roomContainer.appendChild(div.firstElementChild);
+    });
+
+    roomContainer.addEventListener('click', function(e) {
+        if (e.target.classList.contains('hhb-remove-room')) {
+            e.preventDefault();
+            const row = e.target.closest('.hhb-room-row');
+            // Check if it has a real ID (saved room)
+            const idInput = row.querySelector('input[name$="[id]"]');
+            if (idInput && idInput.value && !idInput.value.startsWith('temp_')) {
+                // It's a saved room, mark for deletion instead of removing from DOM immediately
+                row.querySelector('.hhb-room-delete-flag').value = '1';
+                row.style.display = 'none';
+            } else {
+                // It's a new unsaved room, just remove from DOM
+                row.remove();
+            }
+        }
+    });
 
     // Tab switching
     const tabs = document.querySelectorAll('.hhb-tab-btn');

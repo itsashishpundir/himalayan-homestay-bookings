@@ -73,7 +73,7 @@ async function loadCalendar(propId, month, year) {
     if (year) url += `&year=${year}`;
 
     try {
-        const res = await fetch(url, { headers: { 'X-WP-Nonce': nonce } });
+        const res = await fetch(url, { headers: { 'X-WP-Nonce': nonce }, credentials: 'same-origin' });
         const data = await res.json();
 
         if ( ! data.has_properties ) {

@@ -87,7 +87,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const nonce = '<?php echo wp_create_nonce("wp_rest"); ?>';
         const res = await fetch('/wp-json/hhb/v1/host/overview', {
-            headers: { 'X-WP-Nonce': nonce }
+            headers: { 'X-WP-Nonce': nonce },
+            credentials: 'same-origin'
         });
         const data = await res.json();
 

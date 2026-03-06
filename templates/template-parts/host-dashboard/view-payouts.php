@@ -62,7 +62,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const nonce = '<?php echo wp_create_nonce("wp_rest"); ?>';
-        const data = await fetch('/wp-json/hhb/v1/host/payouts', { headers: { 'X-WP-Nonce': nonce } }).then(r => r.json());
+        const data = await fetch('/wp-json/hhb/v1/host/payouts', { headers: { 'X-WP-Nonce': nonce }, credentials: 'same-origin' }).then(r => r.json());
 
         if ( ! data.has_properties ) {
             document.getElementById('hhb-payouts-wrapper').innerHTML = `

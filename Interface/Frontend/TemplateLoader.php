@@ -32,7 +32,9 @@ class TemplateLoader {
      */
     private array $page_template_map = [
         'host-panel-template'      => 'dashboard.php',
+        'page-host-panel.php'      => 'dashboard.php', // Backwards compatibility with theme template
         'become-host-template'     => 'become-host.php',
+        'page-become-a-host.php'   => 'become-host.php', // Backwards compatibility
         'legal-page-template'      => 'legal-page.php',
     ];
 

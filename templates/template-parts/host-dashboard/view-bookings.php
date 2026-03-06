@@ -62,7 +62,8 @@ async function loadBookings(page) {
 
     try {
         const res = await fetch(`/wp-json/hhb/v1/host/bookings?page=${page}`, {
-            headers: { 'X-WP-Nonce': nonce }
+            headers: { 'X-WP-Nonce': nonce },
+            credentials: 'same-origin'
         });
         const data = await res.json();
 
