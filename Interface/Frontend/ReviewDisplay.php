@@ -17,9 +17,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ReviewDisplay {
 
     public static function init(): void {
-        add_filter( 'the_content', [ __CLASS__, 'append_reviews_to_content' ] );
+        // AJAX hooks must be registered on every request — admin-ajax.php has is_admin() = true.
         add_action( 'wp_ajax_hhb_load_reviews',        [ __CLASS__, 'ajax_load_reviews' ] );
         add_action( 'wp_ajax_nopriv_hhb_load_reviews', [ __CLASS__, 'ajax_load_reviews' ] );
+
+        // Content filter only needed on the frontend.
+        if ( ! is_admin() ) {
+            add_filter( 'the_content', [ __CLASS__, 'append_reviews_to_content' ] );
+        }
     }
 
     public static function ajax_load_reviews(): void {

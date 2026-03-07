@@ -213,6 +213,16 @@ final class Himalayan_Homestay_Bookings {
             }
         }, 1 );
 
+        // ReviewDisplay: AJAX hooks must be registered for all requests (admin-ajax.php is admin context).
+        require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/ReviewDisplay.php';
+        \Himalayan\Homestay\Interface\Frontend\ReviewDisplay::init();
+
+        // GDPR Compliance: Personal Data Eraser Hooks — registered in admin context (WP privacy tools).
+        if ( is_admin() ) {
+            require_once plugin_dir_path( __FILE__ ) . 'Infrastructure/Admin/PersonalDataEraser.php';
+            \Himalayan\Homestay\Infrastructure\Admin\PersonalDataEraser::init();
+        }
+
         // Frontend Booking Widget & Pages.
         if ( ! is_admin() ) {
             // Template Loader — serves plugin default templates for CPT / taxonomy / custom dashboard pages.
@@ -224,8 +234,6 @@ final class Himalayan_Homestay_Bookings {
             \Himalayan\Homestay\Interface\Frontend\MyAccount::init();
             require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/ReviewPage.php';
             \Himalayan\Homestay\Interface\Frontend\ReviewPage::init();
-            require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/ReviewDisplay.php';
-            \Himalayan\Homestay\Interface\Frontend\ReviewDisplay::init();
             // SEO: Schema markup, JSON-LD, meta tags, Open Graph (Phase 2).
             require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/HomestaySchemaManager.php';
             \Himalayan\Homestay\Interface\Frontend\HomestaySchemaManager::init();
@@ -238,12 +246,6 @@ final class Himalayan_Homestay_Bookings {
             // GDPR Compliance: Data Erasure Request Form (Phase 5).
             require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/DataDeletionRequest.php';
             \Himalayan\Homestay\Interface\Frontend\DataDeletionRequest::init();
-
-            // GDPR Compliance: Personal Data Eraser Hooks (Phase 5).
-            if ( is_admin() ) {
-                require_once plugin_dir_path( __FILE__ ) . 'Infrastructure/Admin/PersonalDataEraser.php';
-                \Himalayan\Homestay\Infrastructure\Admin\PersonalDataEraser::init();
-            }
 
             // Wishlist Handler (Phase 15)
             require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/WishlistHandler.php';
