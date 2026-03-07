@@ -241,14 +241,17 @@ class PropertyManager {
             'post_title'   => $title,
             'post_content' => $content,
             'post_type'    => 'hhb_homestay',
-            'post_status'  => 'publish', // Auto-publish for now
             'post_author'  => $current_user_id,
         ];
 
         if ( $property_id > 0 ) {
-            $post_data['ID'] = $property_id;
+            // Keep the existing publish status when updating — don't downgrade a live listing.
+            $post_data['ID']          = $property_id;
+            $post_data['post_status'] = get_post_status( $property_id ) ?: 'pending';
             $new_post_id = wp_update_post( $post_data, true );
         } else {
+            // New listings go to pending — admin must approve before going live.
+            $post_data['post_status'] = 'pending';
             $new_post_id = wp_insert_post( $post_data, true );
         }
 

@@ -788,6 +788,14 @@ class HomestayMetaBoxes {
         if ( ! isset( $_POST['hhb_homestay_details_nonce'] ) || ! wp_verify_nonce( $_POST['hhb_homestay_details_nonce'], 'hhb_save_homestay_details' ) ) return;
         if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
 
+        // Ownership guard: non-admins can only save their own properties.
+        if ( ! current_user_can( 'manage_options' ) ) {
+            $post = get_post( $post_id );
+            if ( ! $post || (int) $post->post_author !== get_current_user_id() ) {
+                return;
+            }
+        }
+
         // Save Gallery
         if ( isset( $_POST['hhb_gallery'] ) ) {
             update_post_meta( $post_id, 'hhb_gallery', sanitize_text_field( $_POST['hhb_gallery'] ) );

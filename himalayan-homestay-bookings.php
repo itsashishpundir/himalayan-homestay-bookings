@@ -259,6 +259,31 @@ final class Himalayan_Homestay_Bookings {
         // Run DB upgrade on version change.
         add_action( 'plugins_loaded', [ $this, 'maybe_upgrade_db' ] );
 
+        // ── Block hosts from WP Admin ────────────────────────────────────────
+        // hhb_host users should only use the frontend dashboard.
+        // Redirect them to the host dashboard page if they try to access /wp-admin/.
+        add_action( 'admin_init', function() {
+            if ( defined( 'DOING_AJAX' ) && DOING_AJAX ) return;
+            if ( ! is_user_logged_in() ) return;
+
+            $user = wp_get_current_user();
+            if ( ! in_array( 'hhb_host', (array) $user->roles, true ) ) return;
+
+            // Find the page using the host-panel-template page template.
+            $dashboard_page = get_pages( [
+                'meta_key'   => '_wp_page_template',
+                'meta_value' => 'host-panel-template',
+                'number'     => 1,
+            ] );
+
+            $redirect_url = ! empty( $dashboard_page )
+                ? get_permalink( $dashboard_page[0]->ID )
+                : home_url( '/' );
+
+            wp_safe_redirect( $redirect_url );
+            exit;
+        } );
+
         // Custom Cron Schedules.
         add_filter( 'cron_schedules', [ $this, 'add_cron_schedules' ] );
 
