@@ -20,6 +20,11 @@ class MyAccount {
         add_shortcode( 'hhb_my_account', [ __CLASS__, 'render_shortcode' ] );
         add_action( 'wp_enqueue_scripts', [ __CLASS__, 'enqueue_styles' ] );
         add_action( 'init', [ __CLASS__, 'handle_auth_actions' ] );
+
+        // Always redirect to homepage after logout — regardless of where the logout link came from.
+        add_filter( 'logout_redirect', function() {
+            return home_url( '/' );
+        } );
     }
 
     public static function enqueue_styles(): void {
@@ -72,6 +77,10 @@ class MyAccount {
                     if ( is_wp_error( $user_id ) ) {
                         set_transient( 'hhb_auth_error', $user_id->get_error_message(), 30 );
                     } else {
+                        // Assign the Guest role (not default subscriber)
+                        $user_obj = new \WP_User( $user_id );
+                        $user_obj->set_role( 'hhb_guest' );
+
                         // Auto-login
                         wp_set_auth_cookie( $user_id, true );
                         wp_redirect( remove_query_arg( [ 'registered' ] ) );
@@ -290,7 +299,7 @@ class MyAccount {
                                 <span class="material-symbols-outlined text-[20px]">dashboard</span> Host Dashboard
                             </a>
                             <?php endif; ?>
-                            <a href="<?php echo esc_url( wp_logout_url( get_permalink() ) ); ?>" class="flex items-center justify-center gap-2 w-full bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 font-bold py-3 px-4 rounded-xl transition-colors">
+                            <a href="<?php echo esc_url( wp_logout_url( home_url( '/' ) ) ); ?>" class="flex items-center justify-center gap-2 w-full bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 font-bold py-3 px-4 rounded-xl transition-colors">
                                 <span class="material-symbols-outlined text-[20px]">logout</span> <?php esc_html_e( 'Log out', 'himalayan-homestay-bookings' ); ?>
                             </a>
                         </div>

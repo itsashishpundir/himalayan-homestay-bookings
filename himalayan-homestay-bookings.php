@@ -101,6 +101,37 @@ final class Himalayan_Homestay_Bookings {
             set_transient( 'hhb_blocks_migrated_v1', 1, YEAR_IN_SECONDS );
         }, 5 );
 
+        // ── One-time migration: register hhb_guest role ──
+        add_action( 'init', function() {
+            if ( get_role( 'hhb_guest' ) ) return; // already exists
+            add_role( 'hhb_guest', __( 'Guest', 'himalayan-homestay-bookings' ), [ 'read' => true ] );
+        }, 1 );
+
+        // ── One-time migration: create newsletter subscribers table ──
+        add_action( 'init', function() {
+            // Always check if table physically exists — do not short-circuit with transient only
+            if ( get_transient( 'hhb_newsletter_table_v2_created' ) ) return;
+            global $wpdb;
+            $table = $wpdb->prefix . 'hhb_newsletter_subscribers';
+            if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
+                require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+                $collate = $wpdb->has_cap( 'collation' ) ? $wpdb->get_charset_collate() : '';
+                dbDelta( "CREATE TABLE {$table} (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    email varchar(255) NOT NULL,
+                    name varchar(255) DEFAULT '' NOT NULL,
+                    status varchar(20) DEFAULT 'active' NOT NULL,
+                    unsubscribe_token varchar(64) NOT NULL,
+                    subscribed_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                    unsubscribed_at datetime DEFAULT NULL,
+                    PRIMARY KEY  (id),
+                    UNIQUE KEY unique_email (email),
+                    KEY status (status)
+                ) {$collate};" );
+            }
+            set_transient( 'hhb_newsletter_table_v2_created', 1, YEAR_IN_SECONDS );
+        }, 5 );
+
         // ── One-time migration: add payment_expires_at column ──
         add_action( 'init', function() {
             if ( get_transient( 'hhb_schema_migrated_v260' ) ) return;
@@ -183,6 +214,12 @@ final class Himalayan_Homestay_Bookings {
         require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/ReviewsPage.php';
         \Himalayan\Homestay\Interface\Admin\ReviewsPage::init();
 
+        // Newsletter System
+        require_once plugin_dir_path( __FILE__ ) . 'Infrastructure/Newsletter/NewsletterManager.php';
+        \Himalayan\Homestay\Infrastructure\Newsletter\NewsletterManager::init();
+        require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/NewsletterPage.php';
+        \Himalayan\Homestay\Interface\Admin\NewsletterPage::init();
+
         // Admin System Tools Page
         require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/SystemToolsPage.php';
         \Himalayan\Homestay\Interface\Admin\SystemToolsPage::init();
@@ -216,6 +253,28 @@ final class Himalayan_Homestay_Bookings {
         // ReviewDisplay: AJAX hooks must be registered for all requests (admin-ajax.php is admin context).
         require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/ReviewDisplay.php';
         \Himalayan\Homestay\Interface\Frontend\ReviewDisplay::init();
+
+        // ── Comment Moderation ───────────────────────────────────────────────────
+        // 1. All comments require admin approval before going live.
+        add_filter( 'pre_option_comment_moderation', '__return_true' );
+
+        // 2. Block comments containing links or anchor tags.
+        add_filter( 'preprocess_comment', function( $commentdata ) {
+            $content = $commentdata['comment_content'];
+
+            $has_url    = (bool) preg_match( '#https?://|www\.#i', $content );
+            $has_anchor = (bool) preg_match( '#<\s*a\s+[^>]*href#i', $content );
+
+            if ( $has_url || $has_anchor ) {
+                wp_die(
+                    __( 'Links are not allowed in comments. Please remove any URLs or links and try again.', 'himalayan-homestay-bookings' ),
+                    __( 'Comment Rejected', 'himalayan-homestay-bookings' ),
+                    [ 'response' => 403, 'back_link' => true ]
+                );
+            }
+
+            return $commentdata;
+        } );
 
         // GDPR Compliance: Personal Data Eraser Hooks — registered in admin context (WP privacy tools).
         if ( is_admin() ) {

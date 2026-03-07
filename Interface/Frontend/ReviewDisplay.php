@@ -100,7 +100,7 @@ class ReviewDisplay {
         global $wpdb;
         $table = $wpdb->prefix . 'hhb_reviews';
 
-        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) != $table ) {
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '{$table}'" ) !== $table ) {
             return '';
         }
 
@@ -287,15 +287,9 @@ class ReviewDisplay {
 
         $login_url = wp_login_url( get_permalink( $homestay_id ) );
 
-        // Not logged in — show prompt.
+        // Not logged in — don't show anything.
         if ( ! is_user_logged_in() ) {
-            ob_start(); ?>
-            <div style="margin-top:48px; padding:28px; background:#fff; border:1px solid #e2e8f0; border-radius:16px; text-align:center;">
-                <span style="font-size:36px;">✍️</span>
-                <h3 style="margin:12px 0 6px; font-size:18px; font-weight:800; color:#0f172a;">Share Your Experience</h3>
-                <p style="color:#64748b; margin:0 0 16px; font-size:14px;">Stayed here? <a href="<?php echo esc_url( $login_url ); ?>" style="color:#e85e30; font-weight:600;">Log in</a> to write a review.</p>
-            </div>
-            <?php return ob_get_clean();
+            return '';
         }
 
         $user       = wp_get_current_user();

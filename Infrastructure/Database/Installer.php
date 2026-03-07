@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 class Installer {
 
     /** @var string Current database schema version. */
-    const DB_VERSION = '4.0.0';
+    const DB_VERSION = '4.1.0';
 
     public static function install() {
         global $wpdb;
@@ -354,6 +354,24 @@ class Installer {
             KEY dates (check_in, check_out)
         ) $collate;";
 
+        // =====================================================================
+        // 14. Newsletter Subscribers
+        // =====================================================================
+        $table_newsletter = $wpdb->prefix . 'hhb_newsletter_subscribers';
+        $sql14 = "CREATE TABLE $table_newsletter (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            email varchar(255) NOT NULL,
+            name varchar(255) DEFAULT '' NOT NULL,
+            status varchar(20) DEFAULT 'active' NOT NULL,
+            unsubscribe_token varchar(64) NOT NULL,
+            subscribed_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            unsubscribed_at datetime DEFAULT NULL,
+            PRIMARY KEY  (id),
+            UNIQUE KEY unique_email (email),
+            KEY status (status)
+        ) $collate;";
+        dbDelta( $sql14 );
+
         dbDelta( $sql1 );
         dbDelta( $sql2 );
         dbDelta( $sql3 );
@@ -422,9 +440,18 @@ class Installer {
             __( 'Host', 'himalayan-homestay-bookings' ),
             array(
                 'read'                => true,
-                'edit_posts'          => true,   // Allow them to edit their own posts
-                'upload_files'        => true,   // Allow uploading property images
-                'manage_hhb_property' => true,   // Custom capability for API access
+                'edit_posts'          => true,
+                'upload_files'        => true,
+                'manage_hhb_property' => true,
+            )
+        );
+
+        // Add Guest role — for users who register via the my-account page
+        add_role(
+            'hhb_guest',
+            __( 'Guest', 'himalayan-homestay-bookings' ),
+            array(
+                'read' => true,
             )
         );
     }
