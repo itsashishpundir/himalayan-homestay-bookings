@@ -220,6 +220,12 @@ final class Himalayan_Homestay_Bookings {
         require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/NewsletterPage.php';
         \Himalayan\Homestay\Interface\Admin\NewsletterPage::init();
 
+        // Promotional Popups
+        require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/PopupsPage.php';
+        \Himalayan\Homestay\Interface\Admin\PopupsPage::init();
+        require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/PopupManager.php';
+        \Himalayan\Homestay\Interface\Frontend\PopupManager::init();
+
         // Admin System Tools Page
         require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/SystemToolsPage.php';
         \Himalayan\Homestay\Interface\Admin\SystemToolsPage::init();
