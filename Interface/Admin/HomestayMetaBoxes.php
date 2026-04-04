@@ -635,7 +635,17 @@ class HomestayMetaBoxes {
         wp_nonce_field( 'hhb_save_homestay_booking_rules', 'hhb_homestay_booking_rules_nonce' );
         $buffer_days     = get_post_meta( $post->ID, 'hhb_buffer_days', true );
         $deposit_percent = get_post_meta( $post->ID, 'hhb_deposit_percent', true );
+        $booking_enabled = get_post_meta( $post->ID, 'hhb_booking_enabled', true );
+        if ( '' === $booking_enabled ) {
+            $booking_enabled = 'yes';
+        }
         ?>
+        <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid #eee;">
+            <label style="display:block;font-weight:600;font-size:12px;margin-bottom:6px">Enable Bookings?</label>
+            <label style="margin-right:15px;"><input type="radio" name="hhb_booking_enabled" value="yes" <?php checked($booking_enabled, 'yes'); ?>> Yes</label>
+            <label><input type="radio" name="hhb_booking_enabled" value="no" <?php checked($booking_enabled, 'no'); ?>> No (Pause Bookings)</label>
+            <p class="description" style="margin-top:6px;">If set to No, the booking widget will display a "Bookings Closed" message.</p>
+        </div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top:10px;">
             <div>
                 <label style="display:block;font-weight:600;font-size:12px;margin-bottom:3px">Buffer Days (between bookings)</label>
@@ -853,7 +863,7 @@ class HomestayMetaBoxes {
         }
 
         // Save Booking Rules
-        $booking_fields = [ 'hhb_buffer_days', 'hhb_deposit_percent' ];
+        $booking_fields = [ 'hhb_buffer_days', 'hhb_deposit_percent', 'hhb_booking_enabled' ];
         foreach ( $booking_fields as $f ) {
             if ( isset( $_POST[$f] ) ) {
                 update_post_meta( $post_id, $f, sanitize_text_field( $_POST[$f] ) );

@@ -115,6 +115,14 @@ class BookingWidget {
 
     public static function render_widget( $atts ): string {
         $homestay_id = get_the_ID();
+
+        $booking_enabled = get_post_meta( $homestay_id, 'hhb_booking_enabled', true );
+        if ( 'no' === $booking_enabled ) {
+            return '<div class="hhb-booking-widget-disabled" style="padding: 25px 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">' . 
+                   '<h3 style="margin: 0 0 10px; font-size: 20px; color: #1e293b; font-weight: 700;">' . esc_html__( 'Bookings Currently Closed', 'himalayan-homestay-bookings' ) . '</h3>' .
+                   '<p style="margin: 0; font-size: 14px; color: #64748b; line-height: 1.5;">' . esc_html__( 'This property is not accepting new bookings at the moment. Please check back later or contact the host for inquiries.', 'himalayan-homestay-bookings' ) . '</p>' .
+                   '</div>';
+        }
         $currency    = 'INR';
         $min_nights  = get_post_meta( $homestay_id, 'hhb_min_nights', true ) ?: 1;
         $deposit_pct = get_post_meta( $homestay_id, 'hhb_deposit_percent', true ) ?: 0;

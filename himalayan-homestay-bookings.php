@@ -214,6 +214,10 @@ final class Himalayan_Homestay_Bookings {
         require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/ReviewsPage.php';
         \Himalayan\Homestay\Interface\Admin\ReviewsPage::init();
 
+        // Homestay Import / Export (Backup)
+        require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/ImportExportPage.php';
+        \Himalayan\Homestay\Interface\Admin\ImportExportPage::init();
+
         // Newsletter System
         require_once plugin_dir_path( __FILE__ ) . 'Infrastructure/Newsletter/NewsletterManager.php';
         \Himalayan\Homestay\Infrastructure\Newsletter\NewsletterManager::init();
