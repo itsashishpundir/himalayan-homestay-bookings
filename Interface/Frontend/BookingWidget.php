@@ -18,6 +18,94 @@ class BookingWidget {
     public static function init(): void {
         add_shortcode( 'hhb_booking_form', [ __CLASS__, 'render_widget' ] );
         add_action( 'wp_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
+        add_action( 'wp_ajax_nopriv_hhb_ajax_login',    [ __CLASS__, 'ajax_login' ] );
+        add_action( 'wp_ajax_nopriv_hhb_ajax_register', [ __CLASS__, 'ajax_register' ] );
+        add_action( 'wp_ajax_nopriv_hhb_nonce_refresh', [ __CLASS__, 'ajax_nonce_refresh' ] );
+        add_action( 'wp_ajax_hhb_nonce_refresh',        [ __CLASS__, 'ajax_nonce_refresh' ] );
+    }
+
+    public static function ajax_login(): void {
+        check_ajax_referer( 'hhb_auth_action', 'hhb_auth_nonce' );
+
+        $log = sanitize_user( wp_unslash( $_POST['log'] ?? '' ) );
+        $pwd = wp_unslash( $_POST['pwd'] ?? '' );
+
+        if ( empty( $log ) || empty( $pwd ) ) {
+            wp_send_json_error( [ 'message' => __( 'Please enter your username and password.', 'himalayan-homestay-bookings' ) ] );
+        }
+
+        $creds = [
+            'user_login'    => $log,
+            'user_password' => $pwd,
+            'remember'      => ! empty( $_POST['rememberme'] ),
+        ];
+
+        $user = wp_signon( $creds, is_ssl() );
+
+        if ( is_wp_error( $user ) ) {
+            wp_send_json_error( [ 'message' => $user->get_error_message() ] );
+        }
+
+        // Set current user so the nonce is generated for the now-logged-in session.
+        wp_set_current_user( $user->ID );
+
+        wp_send_json_success( [
+            'nonce' => wp_create_nonce( 'wp_rest' ),
+            'name'  => $user->display_name,
+            'email' => $user->user_email,
+        ] );
+    }
+
+    public static function ajax_register(): void {
+        check_ajax_referer( 'hhb_auth_action', 'hhb_auth_nonce' );
+
+        $email    = sanitize_email( wp_unslash( $_POST['email'] ?? '' ) );
+        $password = wp_unslash( $_POST['reg_password'] ?? '' );
+
+        if ( ! is_email( $email ) ) {
+            wp_send_json_error( [ 'message' => __( 'Please enter a valid email address.', 'himalayan-homestay-bookings' ) ] );
+        }
+
+        if ( empty( $password ) ) {
+            wp_send_json_error( [ 'message' => __( 'Please choose a password.', 'himalayan-homestay-bookings' ) ] );
+        }
+
+        if ( email_exists( $email ) ) {
+            wp_send_json_error( [ 'message' => __( 'An account with this email already exists. Please log in instead.', 'himalayan-homestay-bookings' ) ] );
+        }
+
+        // Use the part before @ as username; make it unique if taken.
+        $username = sanitize_user( strstr( $email, '@', true ) );
+        if ( username_exists( $username ) ) {
+            $username .= wp_rand( 10, 99 );
+        }
+
+        $user_id = wp_create_user( $username, $password, $email );
+
+        if ( is_wp_error( $user_id ) ) {
+            wp_send_json_error( [ 'message' => $user_id->get_error_message() ] );
+        }
+
+        $user_obj = new \WP_User( $user_id );
+        $user_obj->set_role( 'hhb_guest' );
+
+        wp_set_auth_cookie( $user_id, true );
+        wp_set_current_user( $user_id );
+
+        wp_send_json_success( [
+            'nonce' => wp_create_nonce( 'wp_rest' ),
+            'name'  => $user_obj->display_name ?: $username,
+            'email' => $email,
+        ] );
+    }
+
+    public static function ajax_nonce_refresh(): void {
+        $user  = wp_get_current_user();
+        wp_send_json_success( [
+            'nonce' => wp_create_nonce( 'wp_rest' ),
+            'name'  => $user->exists() ? $user->display_name : '',
+            'email' => $user->exists() ? $user->user_email   : '',
+        ] );
     }
 
     public static function enqueue_assets(): void {
@@ -281,6 +369,36 @@ class BookingWidget {
                     </div>
                 </div>
             </form>
+
+            <!-- Auth Gate Modal — shown to non-logged-in users who click "Request to Book" -->
+            <div id="hhb-auth-gate-modal" class="hhb-payment-modal hhb-hidden" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e( 'Sign in to book', 'himalayan-homestay-bookings' ); ?>">
+                <div class="hhb-payment-modal-content hhb-auth-modal-content">
+                    <button type="button" id="hhb-auth-modal-close" aria-label="<?php esc_attr_e( 'Close', 'himalayan-homestay-bookings' ); ?>">&#x2715;</button>
+
+                    <div class="hhb-auth-context-header">
+                        <span class="hhb-auth-context-icon">🔐</span>
+                        <div>
+                            <p class="hhb-auth-context-title"><?php esc_html_e( 'Sign in to complete your booking', 'himalayan-homestay-bookings' ); ?></p>
+                            <p class="hhb-auth-context-sub"><?php esc_html_e( 'Your selected dates will be saved.', 'himalayan-homestay-bookings' ); ?></p>
+                        </div>
+                    </div>
+
+                    <div class="hhb-auth-tabs" role="tablist">
+                        <button type="button" class="hhb-auth-tab hhb-auth-tab--active" data-tab="login" role="tab" aria-selected="true"><?php esc_html_e( 'Log In', 'himalayan-homestay-bookings' ); ?></button>
+                        <button type="button" class="hhb-auth-tab" data-tab="register" role="tab" aria-selected="false"><?php esc_html_e( 'Create Account', 'himalayan-homestay-bookings' ); ?></button>
+                    </div>
+
+                    <div id="hhb-auth-error" class="hhb-auth-error-msg" style="display:none" role="alert"></div>
+
+                    <div id="hhb-auth-panel-login" class="hhb-auth-panel" role="tabpanel">
+                        <?php echo MyAccount::render_auth_forms_inline( 'login' ); ?>
+                    </div>
+                    <div id="hhb-auth-panel-register" class="hhb-auth-panel" style="display:none" role="tabpanel">
+                        <?php echo MyAccount::render_auth_forms_inline( 'register' ); ?>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <style>
@@ -342,6 +460,29 @@ class BookingWidget {
             .hhb-success-text { font-size:15px; color:#555; line-height:1.6; margin:0 0 30px; }
             .hhb-success-btn { display:inline-block; background:#111; color:#fff !important; text-decoration:none; padding:12px 30px; border-radius:30px; font-weight:600; font-size:15px; transition:all 0.2s; }
             .hhb-success-btn:hover { background:#000; transform:translateY(-1px); box-shadow:0 6px 20px rgba(0,0,0,0.15); }
+
+            /* ── Auth Gate Modal ── */
+            .hhb-auth-modal-content { max-width:420px !important; padding:0 !important; text-align:left !important; position:relative; overflow:hidden; }
+            #hhb-auth-modal-close { position:absolute; top:12px; right:12px; background:rgba(0,0,0,.06); border:none; border-radius:50%; width:32px; height:32px; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:2; transition:background .2s,color .2s; }
+            #hhb-auth-modal-close:hover { background:#fee2e2; color:#dc2626; }
+            .hhb-auth-context-header { display:flex; align-items:flex-start; gap:12px; padding:28px 24px 0; }
+            .hhb-auth-context-icon { font-size:26px; line-height:1; flex-shrink:0; margin-top:2px; }
+            .hhb-auth-context-title { margin:0 0 3px; font-size:16px; font-weight:800; color:#1e293b; }
+            .hhb-auth-context-sub { margin:0; font-size:13px; color:#64748b; }
+            .hhb-auth-tabs { display:flex; margin:20px 0 0; border-bottom:2px solid #f1f5f9; }
+            .hhb-auth-tab { flex:1; padding:13px; background:none; border:none; font-size:14px; font-weight:700; cursor:pointer; color:#94a3b8; border-bottom:3px solid transparent; margin-bottom:-2px; transition:color .2s,border-color .2s; }
+            .hhb-auth-tab--active { color:#f45c25; border-bottom-color:#f45c25; }
+            .hhb-auth-error-msg { margin:14px 24px 0; padding:10px 14px; background:#fff0f0; color:#cc0000; border:1px solid #ffcccc; border-radius:8px; font-size:13px; line-height:1.5; }
+            .hhb-auth-panel { padding:20px 24px 28px; }
+            .hhb-popup-form { display:flex; flex-direction:column; }
+            .hhb-popup-field { margin-bottom:14px; }
+            .hhb-popup-field label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; }
+            .hhb-popup-field input { width:100%; padding:11px 14px; border:1.5px solid #e2e8f0; border-radius:10px; font-size:14px; box-sizing:border-box; outline:none; transition:border-color .2s,box-shadow .2s; background:#f8fafc; color:#1e293b; }
+            .hhb-popup-field input:focus { border-color:#f45c25; background:#fff; box-shadow:0 0 0 3px rgba(244,92,37,.1); }
+            .hhb-popup-submit-btn { width:100%; padding:13px; background:linear-gradient(135deg,#f45c25,#e04010); color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; margin-top:4px; transition:opacity .2s,transform .2s; box-shadow:0 4px 15px rgba(244,92,37,.3); letter-spacing:.2px; }
+            .hhb-popup-submit-btn:hover { opacity:.92; transform:translateY(-1px); }
+            .hhb-popup-submit-btn:disabled { opacity:.55; cursor:not-allowed; transform:none; box-shadow:none; }
+            .hhb-popup-submit-btn--dark { background:linear-gradient(135deg,#1e293b,#0f172a); box-shadow:0 4px 15px rgba(0,0,0,.2); }
         </style>
 
         <script>
@@ -365,7 +506,10 @@ class BookingWidget {
             const breakdownDiv = document.querySelector(".hhb-price-breakdown");
             const messages     = document.getElementById("hhb-messages");
             const paymentModeSection = document.getElementById("hhb-payment-mode-section");
-            const bookedDates = JSON.parse(widget.dataset.bookedDates || "[]");
+            const bookedDates    = JSON.parse(widget.dataset.bookedDates || "[]");
+            const isLoggedIn     = <?php echo is_user_logged_in() ? 'true' : 'false'; ?>;
+            const ajaxUrl        = widget.dataset.ajaxUrl;
+            let   pendingPayload = null;
 
             roomSelect.addEventListener('change', (e) => {
                 const opt = e.target.options[e.target.selectedIndex];
@@ -434,6 +578,24 @@ class BookingWidget {
                 paymentModeSection.style.display = "none";
                 document.getElementById("hhb-coupon-section").style.display = "none";
                 messages.className = "hhb-messages";
+            }
+
+            function openAuthModal() {
+                const m = document.getElementById('hhb-auth-gate-modal');
+                if (!m) return;
+                m.classList.remove('hhb-hidden');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeAuthModal() {
+                const m = document.getElementById('hhb-auth-gate-modal');
+                if (!m) return;
+                m.classList.add('hhb-hidden');
+                document.body.style.overflow = '';
+                const errEl = document.getElementById('hhb-auth-error');
+                if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+                bookBtn.textContent = '<?php esc_attr_e( 'Request to Book', 'himalayan-homestay-bookings' ); ?>';
+                bookBtn.disabled = false;
             }
 
             function getSelectedServiceIds() {
@@ -536,8 +698,6 @@ class BookingWidget {
                 const roomId = roomSelect.value;
                 if (!roomId) return showMsg("Please select a room.", "error");
 
-                bookBtn.textContent = "Processing..."; bookBtn.disabled = true;
-
                 const payload = {
                     room_id: roomId,
                     check_in: checkInEl.value,
@@ -552,25 +712,35 @@ class BookingWidget {
                     payment_mode: document.querySelector('input[name="hhb_payment_mode"]:checked') ? document.querySelector('input[name="hhb_payment_mode"]:checked').value : ''
                 };
 
+                // Gate: require login before booking.
+                if (!isLoggedIn) {
+                    pendingPayload = payload;
+                    openAuthModal();
+                    return;
+                }
+
                 if (!payload.customer_name || !payload.customer_email) {
-                    showMsg("Name and Email are required.", "error");
-                    bookBtn.textContent = "Request to Book"; bookBtn.disabled = false;
+                    showMsg("<?php esc_attr_e( 'Name and Email are required.', 'himalayan-homestay-bookings' ); ?>", "error");
                     return;
                 }
 
                 if (!payload.payment_mode) {
-                    showMsg("Please select a payment method.", "error");
-                    bookBtn.textContent = "Request to Book"; bookBtn.disabled = false;
+                    showMsg("<?php esc_attr_e( 'Please select a payment method.', 'himalayan-homestay-bookings' ); ?>", "error");
                     return;
                 }
 
-                const processRequest = async (btn) => {
-                    btn.textContent = "Processing..."; btn.disabled = true;
+                bookBtn.textContent = "<?php esc_attr_e( 'Processing…', 'himalayan-homestay-bookings' ); ?>"; bookBtn.disabled = true;
+                processRequest(bookBtn, payload);
+            });
+
+            // processRequest is defined outside the submit handler so hhbAuthAjax can call it too.
+            const processRequest = async (btn, resolvedPayload) => {
+                    btn.textContent = "<?php esc_attr_e( 'Processing…', 'himalayan-homestay-bookings' ); ?>"; btn.disabled = true;
                     try {
                         const res = await fetch("<?php echo esc_url( rest_url( 'himalayan/v1/create-booking' ) ); ?>", {
                             method: "POST",
                             headers: {"Content-Type": "application/json"},
-                            body: JSON.stringify(payload)
+                            body: JSON.stringify(resolvedPayload)
                         });
                         const data = await res.json();
 
@@ -603,9 +773,125 @@ class BookingWidget {
                     }
                 };
 
-                processRequest(bookBtn);
+            // ── Auth modal wiring ──────────────────────────────────────────
+            document.getElementById('hhb-auth-modal-close')
+                ?.addEventListener('click', closeAuthModal);
 
+            document.getElementById('hhb-auth-gate-modal')
+                ?.addEventListener('click', function(e) {
+                    if (e.target === this) closeAuthModal();
+                });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') closeAuthModal();
             });
+
+            document.querySelectorAll('.hhb-auth-tab').forEach(function(tab) {
+                tab.addEventListener('click', function() {
+                    document.querySelectorAll('.hhb-auth-tab').forEach(t => {
+                        t.classList.remove('hhb-auth-tab--active');
+                        t.setAttribute('aria-selected', 'false');
+                    });
+                    this.classList.add('hhb-auth-tab--active');
+                    this.setAttribute('aria-selected', 'true');
+                    document.querySelectorAll('.hhb-auth-panel').forEach(p => p.style.display = 'none');
+                    document.getElementById('hhb-auth-panel-' + this.dataset.tab).style.display = 'block';
+                });
+            });
+
+            // ── AJAX auth ──────────────────────────────────────────────────
+            async function hhbAuthAjax(action, formId) {
+                const form  = document.getElementById(formId);
+                if (!form) return;
+                const errEl = document.getElementById('hhb-auth-error');
+                const btn   = document.getElementById(
+                    action === 'hhb_ajax_login' ? 'hhb-popup-login-btn' : 'hhb-popup-register-btn'
+                );
+                const nonce = form.querySelector('[name="hhb_auth_nonce"]').value;
+
+                const fd = new FormData();
+                fd.append('action', action);
+                fd.append('hhb_auth_nonce', nonce);
+                if (action === 'hhb_ajax_login') {
+                    fd.append('log', form.querySelector('[name="log"]').value);
+                    fd.append('pwd', form.querySelector('[name="pwd"]').value);
+                    const rem = form.querySelector('[name="rememberme"]');
+                    fd.append('rememberme', rem && rem.checked ? 'forever' : '');
+                } else {
+                    fd.append('email', form.querySelector('[name="email"]').value);
+                    fd.append('reg_password', form.querySelector('[name="reg_password"]').value);
+                }
+
+                btn.disabled    = true;
+                btn.textContent = '<?php esc_attr_e( 'Please wait…', 'himalayan-homestay-bookings' ); ?>';
+                errEl.style.display = 'none';
+
+                try {
+                    const res  = await fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        // Refresh the widget's REST nonce for the now-logged-in session.
+                        widget.dataset.nonce = data.data.nonce;
+
+                        // Pre-fill customer fields from user account if still empty.
+                        if (pendingPayload) {
+                            if (!pendingPayload.customer_name && data.data.name) {
+                                pendingPayload.customer_name = data.data.name;
+                                const nameEl = document.getElementById('hhb-name');
+                                if (nameEl && !nameEl.value) nameEl.value = data.data.name;
+                            }
+                            if (!pendingPayload.customer_email && data.data.email) {
+                                pendingPayload.customer_email = data.data.email;
+                                const emailEl = document.getElementById('hhb-email');
+                                if (emailEl && !emailEl.value) emailEl.value = data.data.email;
+                            }
+                        }
+
+                        closeAuthModal();
+
+                        if (pendingPayload) {
+                            const captured = pendingPayload;
+                            pendingPayload = null;
+
+                            // Validate required fields before auto-submitting.
+                            if (!captured.customer_name || !captured.customer_email) {
+                                showMsg('<?php esc_attr_e( 'Please fill in your name and email to complete the booking.', 'himalayan-homestay-bookings' ); ?>', 'error');
+                                return;
+                            }
+                            if (!captured.payment_mode) {
+                                showMsg('<?php esc_attr_e( 'Please select a payment method.', 'himalayan-homestay-bookings' ); ?>', 'error');
+                                return;
+                            }
+
+                            processRequest(bookBtn, captured);
+                        }
+                    } else {
+                        const msg = (data.data && data.data.message)
+                            ? data.data.message
+                            : '<?php esc_attr_e( 'Authentication failed. Please try again.', 'himalayan-homestay-bookings' ); ?>';
+                        errEl.textContent   = msg;
+                        errEl.style.display = 'block';
+                        btn.disabled        = false;
+                        btn.textContent     = action === 'hhb_ajax_login'
+                            ? '<?php esc_attr_e( 'Log in', 'himalayan-homestay-bookings' ); ?>'
+                            : '<?php esc_attr_e( 'Create Account', 'himalayan-homestay-bookings' ); ?>';
+                    }
+                } catch (err) {
+                    errEl.textContent   = '<?php esc_attr_e( 'Network error. Please try again.', 'himalayan-homestay-bookings' ); ?>';
+                    errEl.style.display = 'block';
+                    btn.disabled        = false;
+                    btn.textContent     = action === 'hhb_ajax_login'
+                        ? '<?php esc_attr_e( 'Log in', 'himalayan-homestay-bookings' ); ?>'
+                        : '<?php esc_attr_e( 'Create Account', 'himalayan-homestay-bookings' ); ?>';
+                }
+            }
+
+            document.getElementById('hhb-popup-login-btn')
+                ?.addEventListener('click', () => hhbAuthAjax('hhb_ajax_login', 'hhb-popup-login-form'));
+            document.getElementById('hhb-popup-register-btn')
+                ?.addEventListener('click', () => hhbAuthAjax('hhb_ajax_register', 'hhb-popup-register-form'));
+
         });
         </script>
         <?php

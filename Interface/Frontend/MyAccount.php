@@ -193,6 +193,55 @@ class MyAccount {
         return ob_get_clean();
     }
 
+    /**
+     * Returns standalone login OR register form HTML for embedding in a popup.
+     * Buttons are type=button (no page-POST). Form has a unique ID.
+     *
+     * @param string $panel 'login' or 'register'
+     */
+    public static function render_auth_forms_inline( string $panel ): string {
+        $auth_nonce = wp_create_nonce( 'hhb_auth_action' );
+        ob_start();
+
+        if ( 'login' === $panel ) : ?>
+            <form id="hhb-popup-login-form" class="hhb-popup-form" autocomplete="on">
+                <input type="hidden" name="hhb_auth_nonce" value="<?php echo esc_attr( $auth_nonce ); ?>">
+                <div class="hhb-popup-field">
+                    <label for="hhb-popup-log"><?php esc_html_e( 'Username or email', 'himalayan-homestay-bookings' ); ?></label>
+                    <input type="text" name="log" id="hhb-popup-log" required autocomplete="username" placeholder="you@example.com">
+                </div>
+                <div class="hhb-popup-field">
+                    <label for="hhb-popup-pwd"><?php esc_html_e( 'Password', 'himalayan-homestay-bookings' ); ?></label>
+                    <input type="password" name="pwd" id="hhb-popup-pwd" required autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;">
+                    <input type="checkbox" name="rememberme" id="hhb-popup-remember" value="forever" style="width:auto;margin:0;cursor:pointer;">
+                    <label for="hhb-popup-remember" style="font-size:13px;color:#64748b;margin:0;cursor:pointer;font-weight:500;"><?php esc_html_e( 'Remember me', 'himalayan-homestay-bookings' ); ?></label>
+                </div>
+                <button type="button" id="hhb-popup-login-btn" class="hhb-popup-submit-btn">
+                    <?php esc_html_e( 'Log in', 'himalayan-homestay-bookings' ); ?>
+                </button>
+            </form>
+        <?php elseif ( 'register' === $panel ) : ?>
+            <form id="hhb-popup-register-form" class="hhb-popup-form" autocomplete="on">
+                <input type="hidden" name="hhb_auth_nonce" value="<?php echo esc_attr( $auth_nonce ); ?>">
+                <div class="hhb-popup-field">
+                    <label for="hhb-popup-reg-email"><?php esc_html_e( 'Email address', 'himalayan-homestay-bookings' ); ?></label>
+                    <input type="email" name="email" id="hhb-popup-reg-email" required autocomplete="email" placeholder="you@example.com">
+                </div>
+                <div class="hhb-popup-field">
+                    <label for="hhb-popup-reg-pwd"><?php esc_html_e( 'Password', 'himalayan-homestay-bookings' ); ?></label>
+                    <input type="password" name="reg_password" id="hhb-popup-reg-pwd" required autocomplete="new-password" placeholder="Create a password">
+                </div>
+                <button type="button" id="hhb-popup-register-btn" class="hhb-popup-submit-btn">
+                    <?php esc_html_e( 'Create Account', 'himalayan-homestay-bookings' ); ?>
+                </button>
+            </form>
+        <?php endif;
+
+        return ob_get_clean();
+    }
+
     private static function render_auth_forms(): void {
         $error = get_transient( 'hhb_auth_error' );
         if ( $error ) {
@@ -250,7 +299,7 @@ class MyAccount {
                             <label for="hhb-reg-pwd" class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2"><?php esc_html_e( 'Password', 'himalayan-homestay-bookings' ); ?></label>
                             <input type="password" name="reg_password" id="hhb-reg-pwd" required class="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-900 dark:text-white font-medium">
                         </div>
-                        <button type="submit" name="hhb_register" class="w-full bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold py-3.5 px-6 rounded-full transition-transform hover:scale-[1.02] active:scale-95 shadow-lg flex items-center justify-center gap-2">
+                        <button type="submit" name="hhb_register" class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 px-6 rounded-full transition-transform hover:scale-[1.02] active:scale-95 shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
                             <?php esc_html_e( 'Register', 'himalayan-homestay-bookings' ); ?> <span class="material-symbols-outlined text-[20px]">person_add</span>
                         </button>
                     </form>

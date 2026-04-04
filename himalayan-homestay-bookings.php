@@ -230,6 +230,10 @@ final class Himalayan_Homestay_Bookings {
         require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/SystemToolsPage.php';
         \Himalayan\Homestay\Interface\Admin\SystemToolsPage::init();
 
+        // Admin Setup Guide Page
+        require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/GuidePage.php';
+        \Himalayan\Homestay\Interface\Admin\GuidePage::init();
+
         // Admin Payouts & Financial Reports
         require_once plugin_dir_path( __FILE__ ) . 'Interface/Admin/PayoutsPage.php';
         \Himalayan\Homestay\Interface\Admin\PayoutsPage::init();
@@ -374,15 +378,40 @@ final class Himalayan_Homestay_Bookings {
                 return;
             }
 
-            $tax_query = [];
+            $tax_query  = [];
+            $meta_query = [];
 
             $location = isset( $_GET['location'] ) ? sanitize_text_field( $_GET['location'] ) : '';
             if ( $location ) {
-                $tax_query[] = [
-                    'taxonomy' => 'hhb_location',
-                    'field'    => 'slug',
-                    'terms'    => $location,
-                ];
+                $term = get_term_by( 'slug', $location, 'hhb_location' );
+                if ( $term ) {
+                    // Exact taxonomy slug match — filter by term.
+                    $tax_query[] = [
+                        'taxonomy' => 'hhb_location',
+                        'field'    => 'slug',
+                        'terms'    => $location,
+                    ];
+                } else {
+                    // Free-text search — match against city, state, or address meta.
+                    $meta_query[] = [
+                        'relation' => 'OR',
+                        [
+                            'key'     => 'hhb_city',
+                            'value'   => $location,
+                            'compare' => 'LIKE',
+                        ],
+                        [
+                            'key'     => 'hhb_state',
+                            'value'   => $location,
+                            'compare' => 'LIKE',
+                        ],
+                        [
+                            'key'     => 'hhb_address',
+                            'value'   => $location,
+                            'compare' => 'LIKE',
+                        ],
+                    ];
+                }
             }
 
             $type = isset( $_GET['type'] ) ? sanitize_text_field( $_GET['type'] ) : '';
@@ -396,6 +425,10 @@ final class Himalayan_Homestay_Bookings {
 
             if ( ! empty( $tax_query ) ) {
                 $query->set( 'tax_query', $tax_query );
+            }
+
+            if ( ! empty( $meta_query ) ) {
+                $query->set( 'meta_query', $meta_query );
             }
         } );
 

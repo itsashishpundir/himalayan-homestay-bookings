@@ -25,6 +25,7 @@ class SettingsPage {
         add_action( 'admin_init', [ __CLASS__, 'register_settings' ] );
         add_action( 'admin_post_hhb_save_smtp_config', [ __CLASS__, 'handle_save_smtp_config' ] );
         add_action( 'admin_post_hhb_run_cron',         [ __CLASS__, 'handle_run_cron' ] );
+        add_action( 'rest_api_init',                   [ __CLASS__, 'register_ai_api_rest_route' ] );
     }
 
     public static function add_settings_page(): void {
@@ -278,6 +279,54 @@ class SettingsPage {
             [ __CLASS__, 'render_section_cancellation' ],
             'hhb-settings-cancellation'
         );
+
+        // Section: WordPress API Connection
+        add_settings_section(
+            'hhb_section_wp_api',
+            __( 'WordPress REST API Connection', 'himalayan-homestay-bookings' ),
+            [ __CLASS__, 'render_section_wp_api' ],
+            'hhb-settings-ai'
+        );
+
+        add_settings_field(
+            'wp_api_enabled',
+            __( 'Enable REST API Access', 'himalayan-homestay-bookings' ),
+            [ __CLASS__, 'render_checkbox_field' ],
+            'hhb-settings-ai',
+            'hhb_section_wp_api',
+            [
+                'key'   => 'wp_api_enabled',
+                'label' => __( 'Allow external tools (Claude Code, Gemini CLI, etc.) to connect via the WordPress REST API.', 'himalayan-homestay-bookings' ),
+            ]
+        );
+    }
+
+    /**
+     * Register a public REST endpoint to confirm connectivity.
+     * GET /wp-json/hhb/v1/api-info
+     */
+    public static function register_ai_api_rest_route(): void {
+        register_rest_route( 'hhb/v1', '/api-info', [
+            'methods'             => 'GET',
+            'callback'            => [ __CLASS__, 'rest_api_info' ],
+            'permission_callback' => function() {
+                $opts = get_option( self::OPTION_KEY, [] );
+                // Must be enabled AND caller must be authenticated admin
+                return ! empty( $opts['wp_api_enabled'] ) && 'yes' === $opts['wp_api_enabled']
+                    && current_user_can( 'manage_options' );
+            },
+        ] );
+    }
+
+    public static function rest_api_info( $request ): \WP_REST_Response {
+        $opts = get_option( self::OPTION_KEY, [] );
+        return new \WP_REST_Response( [
+            'status'       => 'connected',
+            'site_url'     => get_site_url(),
+            'rest_url'     => get_rest_url(),
+            'wp_version'   => get_bloginfo( 'version' ),
+            'api_enabled'  => ! empty( $opts['wp_api_enabled'] ) && 'yes' === $opts['wp_api_enabled'],
+        ], 200 );
     }
 
     public static function sanitize_settings( $input ) {
@@ -288,7 +337,9 @@ class SettingsPage {
         $sanitized = get_option( self::OPTION_KEY, [] );
         $tab = $input['active_tab_submitting'] ?? 'payment_gateways';
         
-        if ( $tab === 'payment_gateways' ) {
+        if ( $tab === 'ai_api_keys' ) {
+            $sanitized['wp_api_enabled'] = ! empty( $input['wp_api_enabled'] ) ? 'yes' : 'no';
+        } elseif ( $tab === 'payment_gateways' ) {
             $sanitized['razorpay_enabled'] = ! empty( $input['razorpay_enabled'] ) ? 'yes' : 'no';
             $sanitized['paypal_enabled']   = ! empty( $input['paypal_enabled'] ) ? 'yes' : 'no';
             $sanitized['fake_gateway_enabled'] = ! empty( $input['fake_gateway_enabled'] ) ? 'yes' : 'no';
@@ -341,6 +392,45 @@ class SettingsPage {
 
     public static function render_section_cancellation(): void {
         echo '<p>' . __( 'Configure when and how much to refund when a confirmed booking is cancelled. The refund percentage is calculated automatically by the system based on these settings.', 'himalayan-homestay-bookings' ) . '</p>';
+    }
+
+    public static function render_section_wp_api(): void {
+        $rest_url   = get_rest_url( null, 'hhb/v1/api-info' );
+        $app_pw_url = admin_url( 'profile.php' ) . '#application-passwords-section';
+        $current_user = wp_get_current_user();
+        $username = $current_user->user_login ?? 'admin';
+        ?>
+        <p><?php esc_html_e( 'Connect Claude Code, Gemini CLI, or any other tool to this WordPress site using the built-in Application Passwords system. No third-party API keys needed.', 'himalayan-homestay-bookings' ); ?></p>
+
+        <div style="background:#f0f6fc;border:1px solid #b6d4fe;border-radius:8px;padding:16px 20px;margin:16px 0;">
+            <h4 style="margin:0 0 10px;">🔗 Your REST API Endpoint</h4>
+            <code style="display:block;background:#e8eaf6;padding:8px 12px;border-radius:4px;font-size:13px;word-break:break-all;"><?php echo esc_url( get_rest_url() ); ?></code>
+            <p style="color:#555;font-size:12px;margin:6px 0 0;">CLI connectivity check: <code><?php echo esc_html( $rest_url ); ?></code></p>
+        </div>
+
+        <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:16px 20px;margin:16px 0;">
+            <h4 style="margin:0 0 10px;">📋 How to Connect a CLI Tool (3 Steps)</h4>
+            <ol style="margin:0;padding-left:20px;line-height:2;">
+                <li>Go to <a href="<?php echo esc_url( $app_pw_url ); ?>" target="_blank"><strong>Your Profile → Application Passwords</strong></a></li>
+                <li>Enter a name (e.g. <em>Claude Code</em>) and click <strong>Add New Application Password</strong></li>
+                <li>Copy the generated password — use it in your CLI tool with:<br>
+                    <code style="background:#f5f5f5;padding:4px 8px;border-radius:4px;display:inline-block;margin-top:4px;">
+                        curl -u <?php echo esc_html( $username ); ?>:YOUR_APP_PASSWORD "<?php echo esc_url( $rest_url ); ?>"
+                    </code>
+                </li>
+            </ol>
+        </div>
+
+        <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:16px 20px;margin:16px 0;">
+            <h4 style="margin:0 0 6px;">🤖 Claude Code / Gemini CLI Example</h4>
+            <p style="margin:0 0 8px;font-size:13px;">Set these as environment variables in your shell or <code>.env</code>:</p>
+            <code style="display:block;background:#f5f5f5;padding:10px 12px;border-radius:4px;font-size:12px;line-height:1.8;">
+                WP_URL=<?php echo esc_html( get_site_url() ); ?><br>
+                WP_USER=<?php echo esc_html( $username ); ?><br>
+                WP_APP_PASSWORD=your-generated-app-password
+            </code>
+        </div>
+        <?php
     }
 
     public static function render_section_cash_mode(): void {
@@ -497,6 +587,9 @@ class SettingsPage {
                 <a href="?post_type=hhb_homestay&page=hhb-settings&tab=automation_timing" class="nav-tab <?php echo $active_tab == 'automation_timing' ? 'nav-tab-active' : ''; ?>">
                     ⚙️ <?php esc_html_e( 'Timing Settings', 'himalayan-homestay-bookings' ); ?>
                 </a>
+                <a href="?post_type=hhb_homestay&page=hhb-settings&tab=ai_api_keys" class="nav-tab <?php echo $active_tab == 'ai_api_keys' ? 'nav-tab-active' : ''; ?>" style="color:<?php echo $active_tab=='ai_api_keys'?'':'#7b5cfc'; ?>;font-weight:700;">
+                    🤖 <?php esc_html_e( 'AI API Keys', 'himalayan-homestay-bookings' ); ?>
+                </a>
             </h2>
 
             <?php if ( isset($_GET['config_saved']) ) : ?>
@@ -504,7 +597,7 @@ class SettingsPage {
             <?php endif; ?>
 
             <div style="padding: 20px; background: #fff; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04); margin-top: 20px;">
-                <?php if ( in_array( $active_tab, array( 'payment_gateways', 'email_templates', 'gdpr_privacy', 'automation_timing', 'cancellation_policy' ) ) ) : ?>
+                <?php if ( in_array( $active_tab, array( 'payment_gateways', 'email_templates', 'gdpr_privacy', 'automation_timing', 'cancellation_policy', 'ai_api_keys' ) ) ) : ?>
                     <form action="options.php" method="post">
                         <?php
                         settings_fields( 'hhb_settings_group' );
@@ -641,6 +734,8 @@ class SettingsPage {
                             do_settings_sections( 'hhb-settings-gdpr' );
                         } elseif ( $active_tab == 'automation_timing' ) {
                             do_settings_sections( 'hhb-settings-automation' );
+                        } elseif ( $active_tab == 'ai_api_keys' ) {
+                            do_settings_sections( 'hhb-settings-ai' );
                         }
                         
                         submit_button( __( 'Save Settings', 'himalayan-homestay-bookings' ) );
