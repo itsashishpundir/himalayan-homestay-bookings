@@ -227,15 +227,17 @@ class ReviewDisplay {
 
             <!-- Review Grid -->
             <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:20px;">
-                <?php foreach ( $reviews as $review ) :
+                <?php foreach ( $reviews as $index => $review ) :
                     $date   = date_i18n( get_option( 'date_format' ), strtotime( $review->created_at ) );
                     $rating = max( 1, min( 5, (int) $review->rating ) );
                     // Generate a warm avatar colour from name
                     $colours = ['#e85e30','#f97316','#10b981','#3b82f6','#8b5cf6','#ec4899'];
                     $avatar_bg = $colours[ abs( crc32( $review->customer_name ) ) % count( $colours ) ];
                     $initial   = mb_strtoupper( mb_substr( $review->customer_name, 0, 1 ) );
+                    
+                    $is_hidden = $index >= 6;
                 ?>
-                <div style="background:#fff; border:1px solid #f1f5f9; border-radius:16px; padding:24px; box-shadow:0 2px 12px rgba(0,0,0,0.04); transition:box-shadow 0.2s;" onmouseover="this.style.boxShadow='0 8px 30px rgba(0,0,0,0.09)'" onmouseout="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.04)'">
+                <div class="hhb-review-card <?php echo $is_hidden ? 'hhb-hidden-review' : ''; ?>" style="<?php echo $is_hidden ? 'display:none;' : ''; ?> background:#fff; border:1px solid #f1f5f9; border-radius:16px; padding:24px; box-shadow:0 2px 12px rgba(0,0,0,0.04); transition:box-shadow 0.2s;" onmouseover="this.style.boxShadow='0 8px 30px rgba(0,0,0,0.09)'" onmouseout="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.04)'">
                     <!-- Reviewer -->
                     <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
                         <div style="width:44px; height:44px; border-radius:50%; background:<?php echo esc_attr($avatar_bg); ?>; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:17px; color:#fff; flex-shrink:0; letter-spacing:-0.5px;">
@@ -266,6 +268,22 @@ class ReviewDisplay {
                 </div>
                 <?php endforeach; ?>
             </div>
+            
+            <?php if ( $total_reviews > 6 ) : ?>
+            <div style="margin-top:24px;">
+                <button type="button" id="hhb-view-all-reviews" style="display:inline-block; padding:12px 24px; background:#fff; border:1px solid #0f172a; color:#0f172a; border-radius:8px; font-weight:600; font-size:14px; cursor:pointer; font-family:inherit; transition:background 0.2s, color 0.2s;" onmouseover="this.style.background='#0f172a'; this.style.color='#fff';" onmouseout="this.style.background='#fff'; this.style.color='#0f172a';">
+                    Show all <?php echo $total_reviews; ?> reviews
+                </button>
+            </div>
+            <script>
+                document.getElementById('hhb-view-all-reviews').addEventListener('click', function() {
+                    document.querySelectorAll('.hhb-hidden-review').forEach(function(el) {
+                        el.style.display = 'block'; // Or flex/grid depending on card default
+                    });
+                    this.parentElement.style.display = 'none';
+                });
+            </script>
+            <?php endif; ?>
 
         </div>
         <?php
