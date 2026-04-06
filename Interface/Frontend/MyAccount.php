@@ -245,12 +245,12 @@ class MyAccount {
     private static function render_auth_forms(): void {
         $error = get_transient( 'hhb_auth_error' );
         if ( $error ) {
-            echo '<div class="max-w-5xl mx-auto mb-6 p-4 bg-red-50 text-red-600 border border-red-200 rounded-xl text-center font-medium shadow-sm">' . esc_html( $error ) . '</div>';
+            echo '<div class="max-w-5xl mx-auto mb-6 px-5 py-4 bg-red-50 text-red-700 border border-red-200 rounded-xl text-center font-medium shadow-sm">' . wp_kses_post( $error ) . '</div>';
             delete_transient( 'hhb_auth_error' );
         }
         $success = get_transient( 'hhb_auth_success' );
         if ( $success ) {
-            echo '<div class="max-w-5xl mx-auto mb-6 p-4 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-center font-medium shadow-sm">' . esc_html( $success ) . '</div>';
+            echo '<div class="max-w-5xl mx-auto mb-6 px-5 py-4 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-center font-medium shadow-sm">' . wp_kses_post( $success ) . '</div>';
             delete_transient( 'hhb_auth_success' );
         }
         ?>
@@ -472,47 +472,176 @@ class MyAccount {
                     <!-- Wishlist Section -->
                     <section class="mt-16">
                         <h3 class="text-2xl font-extrabold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-primary">favorite</span>
+                            <span class="material-symbols-outlined text-primary" style="font-variation-settings:'FILL' 1">favorite</span>
                             <?php esc_html_e( 'Saved Properties', 'himalayan-homestay-bookings' ); ?>
                         </h3>
-                        
+
                         <?php
                         $wishlist = get_user_meta( $user->ID, 'hhb_wishlist', true );
                         if ( empty( $wishlist ) || ! is_array( $wishlist ) ) : ?>
-                            <div class="bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-3xl p-10 text-center border border-slate-200 border-dashed dark:border-slate-800">
-                                <span class="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600 mb-4 block">heart_broken</span>
-                                <p class="text-slate-500 dark:text-slate-400 font-medium"><?php esc_html_e( 'You have not saved any properties yet. Click the heart icon on any homestay to save it here.', 'himalayan-homestay-bookings' ); ?></p>
+                            <div class="bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-3xl p-12 text-center border border-slate-200 border-dashed dark:border-slate-800">
+                                <span class="material-symbols-outlined text-5xl text-slate-300 dark:text-slate-600 mb-4 block">heart_broken</span>
+                                <h4 class="text-lg font-bold text-slate-700 dark:text-slate-300 mb-2">No saved properties yet</h4>
+                                <p class="text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto font-medium">Click the ♥ heart icon on any homestay to save it here for later.</p>
+                                <a href="<?php echo esc_url( get_post_type_archive_link('hhb_homestay') ); ?>" class="inline-block bg-primary text-white font-bold px-8 py-3.5 rounded-full hover:scale-105 transition-transform shadow-lg shadow-primary/20">Browse Stays</a>
                             </div>
                         <?php else :
                             $wishlist_query = new \WP_Query([
                                 'post_type'      => 'hhb_homestay',
                                 'post__in'       => $wishlist,
                                 'posts_per_page' => -1,
-                                'orderby'        => 'post__in'
+                                'orderby'        => 'post__in',
                             ]);
+                            global $wpdb;
+                            $hhb_rtable = $wpdb->prefix . 'hhb_reviews';
+                            $hhb_rexist = $wpdb->get_var( "SHOW TABLES LIKE '{$hhb_rtable}'" );
+
                             if ( $wishlist_query->have_posts() ) : ?>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <?php while ( $wishlist_query->have_posts() ) : $wishlist_query->the_post(); 
-                                        $price_range = hhb_get_price_range( get_the_ID() );
-                                        $price       = $price_range ? $price_range['min'] : 0;
+                                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6" id="hhb-wishlist-grid">
+                                    <?php while ( $wishlist_query->have_posts() ) : $wishlist_query->the_post();
+                                        $wl_id       = get_the_ID();
+                                        $price_range = hhb_get_price_range( $wl_id );
+                                        $locs        = get_the_terms( $wl_id, 'hhb_location' );
+                                        $loc_name    = ( $locs && ! is_wp_error( $locs ) ) ? $locs[0]->name : '';
+                                        $types       = get_the_terms( $wl_id, 'hhb_property_type' );
+                                        $type_name   = ( $types && ! is_wp_error( $types ) ) ? $types[0]->name : '';
+                                        $gallery_ids = get_post_meta( $wl_id, 'hhb_gallery', true );
+                                        $gallery_ids = $gallery_ids ? explode( ',', $gallery_ids ) : [];
+                                        $thumb_url   = ! empty( $gallery_ids ) ? wp_get_attachment_image_url( $gallery_ids[0], 'medium_large' ) : get_the_post_thumbnail_url( $wl_id, 'medium_large' );
+                                        $wl_rating = 0; $wl_rcount = 0;
+                                        if ( $hhb_rexist ) {
+                                            $rrow = $wpdb->get_row( $wpdb->prepare( "SELECT AVG(rating) AS avg_r, COUNT(*) AS cnt FROM {$hhb_rtable} WHERE homestay_id = %d AND status = 'approved'", $wl_id ) );
+                                            if ( $rrow && $rrow->cnt ) { $wl_rating = round( (float)$rrow->avg_r, 1 ); $wl_rcount = (int)$rrow->cnt; }
+                                        }
                                     ?>
-                                        <a href="<?php the_permalink(); ?>" class="group flex flex-col sm:flex-row bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden hover:shadow-xl hover:shadow-slate-200/40 hover:border-primary/30 transition-all p-3 gap-4">
-                                            <div class="w-full sm:w-32 h-32 bg-slate-100 overflow-hidden rounded-xl shrink-0">
-                                                <?php if ( has_post_thumbnail() ) : ?>
-                                                    <?php the_post_thumbnail( 'medium', ['class' => 'w-full h-full object-cover group-hover:scale-110 transition-transform duration-700'] ); ?>
-                                                <?php else : ?>
-                                                    <div class="flex h-full items-center justify-center text-slate-300 font-bold">No Image</div>
-                                                <?php endif; ?>
-                                            </div>
-                                            <div class="flex flex-col justify-center flex-1 py-1 pr-2">
-                                                <h4 class="text-lg font-bold text-slate-900 dark:text-white mb-2 line-clamp-2 leading-snug group-hover:text-primary transition-colors"><?php the_title(); ?></h4>
-                                                <div class="text-[17px] font-black text-slate-900 dark:text-white mt-auto flex items-center gap-1">
-                                                    <span class="text-slate-400 font-bold">₹</span><?php echo number_format((float)$price); ?> <span class="text-xs font-bold text-slate-400">/ night</span>
+                                    <div class="group bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col" data-wishlist-card="<?php echo esc_attr($wl_id); ?>">
+
+                                        <!-- Thumbnail -->
+                                        <div class="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                                            <?php if ( $thumb_url ) : ?>
+                                                <a href="<?php the_permalink(); ?>">
+                                                    <img src="<?php echo esc_url($thumb_url); ?>" alt="<?php the_title_attribute(); ?>" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
+                                                </a>
+                                            <?php else : ?>
+                                                <a href="<?php the_permalink(); ?>" class="flex items-center justify-center h-full">
+                                                    <span class="material-symbols-outlined text-5xl text-slate-300">landscape</span>
+                                                </a>
+                                            <?php endif; ?>
+
+                                            <?php if ( $type_name ) : ?>
+                                            <span class="absolute top-3 left-3 bg-white/90 backdrop-blur px-2.5 py-1 rounded-full text-[10px] font-black text-slate-700 uppercase tracking-widest shadow-sm pointer-events-none">
+                                                <?php echo esc_html($type_name); ?>
+                                            </span>
+                                            <?php endif; ?>
+
+                                            <!-- Remove from wishlist button -->
+                                            <button type="button"
+                                                class="hhb-wl-remove absolute top-3 right-3 w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow flex items-center justify-center text-red-400 hover:text-white hover:bg-red-500 transition-all z-10"
+                                                data-post-id="<?php echo esc_attr($wl_id); ?>"
+                                                title="Remove from wishlist"
+                                                aria-label="Remove from wishlist">
+                                                <svg class="w-5 h-5 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
+                                                    <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                        <!-- Card Body -->
+                                        <div class="p-4 flex flex-col gap-2 flex-1">
+                                            <a href="<?php the_permalink(); ?>" class="text-base font-bold text-slate-900 dark:text-white hover:text-primary transition-colors line-clamp-2 leading-snug">
+                                                <?php the_title(); ?>
+                                            </a>
+
+                                            <?php if ( $loc_name ) : ?>
+                                            <p class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                                <span class="material-symbols-outlined text-[14px] text-primary">location_on</span>
+                                                <?php echo esc_html($loc_name); ?>
+                                            </p>
+                                            <?php endif; ?>
+
+                                            <div class="flex items-center justify-between mt-auto pt-3 border-t border-slate-50 dark:border-slate-800">
+                                                <div>
+                                                    <?php if ( $price_range ) : ?>
+                                                        <span class="text-primary font-black text-lg"><?php echo esc_html($price_range['formatted']); ?></span>
+                                                        <span class="text-slate-400 text-[11px] font-bold"> / night</span>
+                                                    <?php else : ?>
+                                                        <span class="text-slate-400 text-sm font-medium">Price TBD</span>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <div class="flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                                                    <span class="material-symbols-outlined text-yellow-400 text-[15px]" style="font-variation-settings:'FILL' 1">star</span>
+                                                    <?php if ( $wl_rcount > 0 ) : ?>
+                                                        <?php echo esc_html($wl_rating); ?> <span class="text-slate-400">(<?php echo esc_html($wl_rcount); ?>)</span>
+                                                    <?php else : ?>
+                                                        <span class="text-slate-400">New</span>
+                                                    <?php endif; ?>
                                                 </div>
                                             </div>
-                                        </a>
+
+                                            <a href="<?php the_permalink(); ?>" class="mt-2 block w-full text-center text-sm font-bold bg-slate-50 dark:bg-slate-800 hover:bg-primary hover:text-white text-slate-700 dark:text-slate-200 py-2.5 rounded-xl transition-all">
+                                                View Details
+                                            </a>
+                                        </div>
+                                    </div>
                                     <?php endwhile; wp_reset_postdata(); ?>
                                 </div>
+
+                                <!-- Browse more CTA -->
+                                <div class="mt-8 text-center">
+                                    <a href="<?php echo esc_url( get_post_type_archive_link('hhb_homestay') ); ?>" class="inline-flex items-center gap-2 text-sm font-bold text-primary hover:underline">
+                                        <span class="material-symbols-outlined text-[18px]">explore</span>
+                                        Browse more stays
+                                    </a>
+                                </div>
+
+                                <!-- AJAX remove handler -->
+                                <script>
+                                (function() {
+                                    var nonce    = '<?php echo wp_create_nonce("hhb_wishlist_nonce"); ?>';
+                                    var ajaxUrl  = '<?php echo esc_js( admin_url("admin-ajax.php") ); ?>';
+                                    var emptyMsg = '<div class="bg-white/50 rounded-3xl p-12 text-center border border-slate-200 border-dashed"><span class="material-symbols-outlined text-5xl text-slate-300 mb-4 block">heart_broken</span><h4 class="text-lg font-bold text-slate-500 mb-2">Your wishlist is empty</h4><a href="<?php echo esc_js( get_post_type_archive_link("hhb_homestay") ); ?>" class="inline-block mt-2 bg-primary text-white font-bold px-8 py-3 rounded-full hover:scale-105 transition-transform">Browse Stays</a></div>';
+
+                                    document.querySelectorAll('.hhb-wl-remove').forEach(function(btn) {
+                                        btn.addEventListener('click', function(e) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            var postId = this.dataset.postId;
+                                            var card   = document.querySelector('[data-wishlist-card="' + postId + '"]');
+                                            var fd     = new FormData();
+                                            fd.append('action',   'hhb_toggle_wishlist');
+                                            fd.append('post_id',  postId);
+                                            fd.append('security', nonce);
+
+                                            if (card) { card.style.opacity = '0.4'; card.style.pointerEvents = 'none'; }
+
+                                            fetch(ajaxUrl, { method: 'POST', body: fd })
+                                                .then(function(r) { return r.json(); })
+                                                .then(function(data) {
+                                                    if (data.success && !data.data.is_favorited) {
+                                                        if (card) {
+                                                            card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                                                            card.style.transform  = 'scale(0.88)';
+                                                            card.style.opacity    = '0';
+                                                            setTimeout(function() {
+                                                                card.remove();
+                                                                var grid = document.getElementById('hhb-wishlist-grid');
+                                                                if (grid && grid.children.length === 0) {
+                                                                    grid.parentNode.innerHTML = emptyMsg;
+                                                                }
+                                                            }, 280);
+                                                        }
+                                                    } else {
+                                                        if (card) { card.style.opacity = '1'; card.style.pointerEvents = ''; }
+                                                    }
+                                                })
+                                                .catch(function() {
+                                                    if (card) { card.style.opacity = '1'; card.style.pointerEvents = ''; }
+                                                });
+                                        });
+                                    });
+                                })();
+                                </script>
+
                             <?php else : ?>
                                 <div class="bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-3xl p-10 text-center border border-slate-200 border-dashed dark:border-slate-800">
                                     <p class="text-slate-500 dark:text-slate-400 font-medium"><?php esc_html_e( 'Some saved properties are no longer available.', 'himalayan-homestay-bookings' ); ?></p>

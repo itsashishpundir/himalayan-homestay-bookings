@@ -296,6 +296,11 @@ final class Himalayan_Homestay_Bookings {
             \Himalayan\Homestay\Infrastructure\Admin\PersonalDataEraser::init();
         }
 
+        // Wishlist Handler — must be outside is_admin() check because AJAX runs through
+        // admin-ajax.php where is_admin() === true. Both priv and nopriv hooks need to fire.
+        require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/WishlistHandler.php';
+        \Himalayan\Homestay\Interface\Frontend\WishlistHandler::init();
+
         // Frontend Booking Widget & Pages.
         if ( ! is_admin() ) {
             // Template Loader — serves plugin default templates for CPT / taxonomy / custom dashboard pages.
@@ -319,10 +324,6 @@ final class Himalayan_Homestay_Bookings {
             // GDPR Compliance: Data Erasure Request Form (Phase 5).
             require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/DataDeletionRequest.php';
             \Himalayan\Homestay\Interface\Frontend\DataDeletionRequest::init();
-
-            // Wishlist Handler (Phase 15)
-            require_once plugin_dir_path( __FILE__ ) . 'Interface/Frontend/WishlistHandler.php';
-            \Himalayan\Homestay\Interface\Frontend\WishlistHandler::init();
         }
     }
 
@@ -433,6 +434,16 @@ final class Himalayan_Homestay_Bookings {
 
             if ( ! empty( $meta_query ) ) {
                 $query->set( 'meta_query', $meta_query );
+            }
+
+            // ── Sort by Price ────────────────────────────────────────────────
+            // Reads ?sort=price_asc or ?sort=price_desc from the URL.
+            // Uses the cached hhb_price_min meta key written by hhb_get_price_range().
+            $sort = isset( $_GET['sort'] ) ? sanitize_key( $_GET['sort'] ) : '';
+            if ( $sort === 'price_asc' || $sort === 'price_desc' ) {
+                $query->set( 'meta_key', 'hhb_price_min' );
+                $query->set( 'orderby',  'meta_value_num' );
+                $query->set( 'order',    $sort === 'price_asc' ? 'ASC' : 'DESC' );
             }
         } );
 

@@ -32,6 +32,11 @@ class TaxonomyMeta {
             <p class="description">Used in the hero section. Defaults to term name if empty.</p>
         </div>
         <div class="form-field">
+            <label for="hhb_term_custom_about">Custom About Title (Optional)</label>
+            <input type="text" name="hhb_term_custom_about" id="hhb_term_custom_about" value="">
+            <p class="description">Used for the bottom content heading. Defaults to "About {term name}" if empty.</p>
+        </div>
+        <div class="form-field">
             <label for="hhb_term_image">Hero Background Image</label>
             <input type="hidden" name="hhb_term_image" id="hhb_term_image" value="">
             <div id="hhb_term_image_wrapper"></div>
@@ -49,6 +54,7 @@ class TaxonomyMeta {
     public static function edit_meta_fields( $term ) {
         $term_id = $term->term_id;
         $title = get_term_meta( $term_id, 'hhb_term_title', true );
+        $custom_about = get_term_meta( $term_id, 'hhb_term_custom_about', true );
         $image_id = get_term_meta( $term_id, 'hhb_term_image', true );
         $bottom_content = get_term_meta( $term_id, 'hhb_term_bottom_content', true );
         
@@ -59,6 +65,13 @@ class TaxonomyMeta {
             <td>
                 <input type="text" name="hhb_term_title" id="hhb_term_title" value="<?php echo esc_attr($title); ?>">
                 <p class="description">Used in the hero section. Defaults to term name if empty.</p>
+            </td>
+        </tr>
+        <tr class="form-field">
+            <th scope="row"><label for="hhb_term_custom_about">Custom About Title</label></th>
+            <td>
+                <input type="text" name="hhb_term_custom_about" id="hhb_term_custom_about" value="<?php echo esc_attr($custom_about); ?>">
+                <p class="description">Used for the bottom content heading. Defaults to "About {term name}" if empty.</p>
             </td>
         </tr>
         <tr class="form-field">
@@ -122,6 +135,9 @@ class TaxonomyMeta {
     public static function save_meta_fields( $term_id ) {
         if ( isset( $_POST['hhb_term_title'] ) ) {
             update_term_meta( $term_id, 'hhb_term_title', sanitize_text_field( $_POST['hhb_term_title'] ) );
+        }
+        if ( isset( $_POST['hhb_term_custom_about'] ) ) {
+            update_term_meta( $term_id, 'hhb_term_custom_about', sanitize_text_field( $_POST['hhb_term_custom_about'] ) );
         }
         if ( isset( $_POST['hhb_term_image'] ) ) {
             update_term_meta( $term_id, 'hhb_term_image', sanitize_text_field( $_POST['hhb_term_image'] ) );

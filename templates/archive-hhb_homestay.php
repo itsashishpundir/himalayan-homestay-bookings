@@ -19,6 +19,21 @@ $selected_guests   = isset($_GET['guests']) ? absint($_GET['guests']) : 0;
 $min_price         = isset($_GET['min_price']) ? absint($_GET['min_price']) : 0;
 $max_price         = isset($_GET['max_price']) ? absint($_GET['max_price']) : 99999;
 $amenities_filter  = isset($_GET['amenities']) ? (array) $_GET['amenities'] : [];
+$current_sort      = isset($_GET['sort']) && in_array($_GET['sort'], ['price_asc','price_desc'], true) ? $_GET['sort'] : '';
+
+// Helper: build sort URL preserving all active filters
+function hhb_sort_url( string $new_sort ): string {
+    $params = array_filter( [
+        'location'  => isset($_GET['location']) ? sanitize_text_field($_GET['location']) : '',
+        'type'      => isset($_GET['type'])     ? sanitize_text_field($_GET['type'])     : '',
+        'guests'    => isset($_GET['guests'])   ? absint($_GET['guests'])                : 0,
+        'min_price' => isset($_GET['min_price'])? absint($_GET['min_price'])             : 0,
+        'max_price' => ( isset($_GET['max_price']) && absint($_GET['max_price']) < 99999 ) ? absint($_GET['max_price']) : 0,
+        'sort'      => $new_sort,
+    ] );
+    $base = get_post_type_archive_link('hhb_homestay') ?: get_pagenum_link(1);
+    return $new_sort ? ( rtrim($base,'/'). '/?' . http_build_query($params) ) : $base . ( ! empty( array_filter($params) ) ? '?' . http_build_query($params) : '' );
+}
 
 // ── Taxonomy options for filter selects ───────────────────────────────────────
 $locations_terms = get_terms(['taxonomy' => 'hhb_location',      'hide_empty' => false]);
@@ -78,6 +93,14 @@ $total_found   = $wp_query->found_posts;
   .hhb-results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
   .hhb-results-count { font-size: 20px; font-weight: 700; color: var(--text); }
   .hhb-results-count span { color: var(--brand); }
+
+  /* ── SORT PILLS ── */
+  .hhb-sort-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hhb-sort-pill { display: inline-flex; align-items: center; gap: 5px; padding: 8px 16px; border-radius: 50px; border: 1.5px solid var(--border); font-size: 13px; font-weight: 700; color: var(--muted); background: white; text-decoration: none; transition: all 0.2s; white-space: nowrap; font-family: 'Inter', sans-serif; }
+  .hhb-sort-pill:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-light); }
+  .hhb-sort-pill.is-active { border-color: var(--brand); color: white; background: var(--brand); box-shadow: 0 4px 12px rgba(232,94,48,0.25); }
+  .hhb-sort-clear { font-size: 12px; font-weight: 700; color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; transition: color 0.2s; }
+  .hhb-sort-clear:hover { color: var(--brand); }
 
   /* ── PROPERTY CARDS GRID ── */
   .hhb-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 24px; }
@@ -223,21 +246,46 @@ $total_found   = $wp_query->found_posts;
       <div class="hhb-results-count">
         <span><?php echo number_format($total_found); ?></span>
         <?php if (is_tax('hhb_location')) : ?>
-          <?php 
-            $queried = get_queried_object(); 
+          <?php
+            $queried = get_queried_object();
             $prefix  = get_theme_mod('himalayanmart_homestay_archive_prefix', 'Explore Homestays in ');
             $suffix  = get_theme_mod('himalayanmart_homestay_archive_suffix', '');
           ?>
           properties in <?php echo esc_html($prefix . ($queried->name ?? '') . $suffix); ?>
         <?php elseif (is_tax('hhb_property_type')) : ?>
-          <?php 
-            $queried = get_queried_object(); 
+          <?php
+            $queried = get_queried_object();
             $prefix  = get_theme_mod('himalayanmart_property_type_archive_prefix', 'Explore ');
             $suffix  = get_theme_mod('himalayanmart_property_type_archive_suffix', ' Stays');
           ?>
           properties matching <?php echo esc_html($prefix . ($queried->name ?? '') . $suffix); ?>
         <?php else : ?>
           properties found
+        <?php endif; ?>
+        <?php if ($current_sort) : ?>
+          <span style="font-size:13px;font-weight:500;color:var(--muted);margin-left:8px;">
+            — sorted by<?php echo $current_sort === 'price_asc' ? ' price ↑' : ' price ↓'; ?>
+          </span>
+        <?php endif; ?>
+      </div>
+
+      <!-- Sort Pills -->
+      <div class="hhb-sort-wrap">
+        <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Sort:</span>
+        <a href="<?php echo esc_url( hhb_sort_url('price_asc') ); ?>"
+           class="hhb-sort-pill<?php echo $current_sort === 'price_asc' ? ' is-active' : ''; ?>"
+           title="Sort by price: lowest first">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M6 2L2 8h8L6 2z"/></svg>
+          Low → High
+        </a>
+        <a href="<?php echo esc_url( hhb_sort_url('price_desc') ); ?>"
+           class="hhb-sort-pill<?php echo $current_sort === 'price_desc' ? ' is-active' : ''; ?>"
+           title="Sort by price: highest first">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M6 10L2 4h8l-4 6z"/></svg>
+          High → Low
+        </a>
+        <?php if ($current_sort) : ?>
+          <a href="<?php echo esc_url( hhb_sort_url('') ); ?>" class="hhb-sort-clear" title="Clear sort">✕ Clear</a>
         <?php endif; ?>
       </div>
     </div>
@@ -272,16 +320,14 @@ $total_found   = $wp_query->found_posts;
               </a>
 
               <!-- Wishlist -->
-              <?php if (is_user_logged_in()) : ?>
-                <button class="hhb-wishlist-btn hhb-wishlist-toggle"
-                        data-id="<?php echo esc_attr($pid); ?>"
-                        data-nonce="<?php echo wp_create_nonce('hhb_wishlist'); ?>"
-                        title="<?php echo $is_wishlisted ? 'Remove from wishlist' : 'Save to wishlist'; ?>">
-                  <span class="material-symbols-outlined" style="<?php echo $is_wishlisted ? 'color: #e85e30;' : ''; ?>">
-                    <?php echo $is_wishlisted ? 'favorite' : 'favorite_border'; ?>
-                  </span>
-                </button>
-              <?php endif; ?>
+              <button class="hhb-wishlist-btn hhb-wishlist-toggle"
+                      data-post-id="<?php echo esc_attr($pid); ?>"
+                      data-nonce="<?php echo wp_create_nonce('hhb_wishlist_nonce'); ?>"
+                      title="<?php echo $is_wishlisted ? 'Remove from wishlist' : 'Save to wishlist'; ?>">
+                <span class="material-symbols-outlined" style="<?php echo $is_wishlisted ? "color: #e85e30; font-variation-settings: 'FILL' 1" : ''; ?>">
+                  <?php echo $is_wishlisted ? 'favorite' : 'favorite_border'; ?>
+                </span>
+              </button>
 
               <!-- Type Badge -->
               <span class="hhb-card-type-badge"><?php echo esc_html($type_label); ?></span>
@@ -365,29 +411,44 @@ $total_found   = $wp_query->found_posts;
 
 <script>
 // ── Wishlist toggle ──────────────────────────────────────────────────────────
-document.querySelectorAll('.hhb-wishlist-toggle').forEach(btn => {
-  btn.addEventListener('click', async function(e) {
+document.querySelectorAll('.hhb-wishlist-toggle').forEach(function(btn) {
+  btn.addEventListener('click', function(e) {
     e.preventDefault();
-    const form = new FormData();
-    form.append('action', 'hhb_toggle_wishlist');
-    form.append('property_id', this.dataset.id);
-    form.append('security', this.dataset.nonce);
-    try {
-      const res  = await fetch('<?php echo esc_js(admin_url("admin-ajax.php")); ?>', { method:'POST', body: form });
-      const data = await res.json();
-      if (data.success) {
-        const icon = this.querySelector('.material-symbols-outlined');
-        if (data.data.action === 'added') {
-          icon.textContent = 'favorite';
-          icon.style.color = '#e85e30';
-          this.title = 'Remove from wishlist';
-        } else {
-          icon.textContent = 'favorite_border';
-          icon.style.color = '';
-          this.title = 'Save to wishlist';
+    e.stopPropagation();
+
+    // Check login state set by WishlistHandler::output_login_modal()
+    if (typeof window.hhbIsLoggedIn !== 'undefined' && !window.hhbIsLoggedIn) {
+      var modal = document.getElementById('hhb-wishlist-modal');
+      if (modal) { modal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+      return;
+    }
+
+    var form = new FormData();
+    form.append('action',   'hhb_toggle_wishlist');
+    form.append('post_id',  this.dataset.postId);   // WishlistHandler reads $_POST['post_id']
+    form.append('security', this.dataset.nonce);     // nonce name: hhb_wishlist_nonce
+
+    var icon = this.querySelector('.material-symbols-outlined');
+    var btn  = this;
+
+    fetch('<?php echo esc_js(admin_url("admin-ajax.php")); ?>', { method: 'POST', body: form })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.success) {
+          if (data.data.is_favorited) {
+            icon.textContent = 'favorite';
+            icon.style.color = '#e85e30';
+            icon.style.fontVariationSettings = "'FILL' 1";
+            btn.title = 'Remove from wishlist';
+          } else {
+            icon.textContent = 'favorite_border';
+            icon.style.color = '';
+            icon.style.fontVariationSettings = "'FILL' 0";
+            btn.title = 'Save to wishlist';
+          }
         }
-      }
-    } catch(err) {}
+      })
+      .catch(function(err) { console.error('HHB Wishlist:', err); });
   });
 });
 </script>
